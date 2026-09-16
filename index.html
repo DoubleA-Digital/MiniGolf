@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Mini Golf</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root{
+    --bg:#d7d4ce;
+    --green:#43b14b;
+    --green-lt:#63cf67;
+    --green-dk:#2f9a3a;
+    --sand:#e5d7a6;
+    --water:#3f9fdc;
+    --wall:#ffffff;
+    --ink:#1d2320;
+    --p1:#ffffff;
+    --p2:#ff5d5d;
+    --panel:#15181c;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);user-select:none;-webkit-user-select:none}
+  canvas{display:block;position:fixed;inset:0;touch-action:none}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+  .chip{position:absolute;top:calc(12px + env(safe-area-inset-top));display:flex;align-items:center;gap:8px}
+  .chip.left{left:12px}
+  .chip.right{right:12px;flex-direction:row-reverse}
+  .av{width:46px;height:46px;border-radius:50%;background:#fff;border:3px solid #fff;
+      box-shadow:0 2px 8px rgba(0,0,0,.25);display:grid;place-items:center;font-size:22px;overflow:hidden}
+  .av.p1{background:#ffd8ec}
+  .av.p2{background:#f6e0c8}
+  .strokes{min-width:34px;height:34px;padding:0 8px;border-radius:17px;background:#5b6167;color:#fff;
+      display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:15px;
+      box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .strokes.active{background:#fff;color:#1d2320}
+  .strokes svg{width:13px;height:13px}
+  .nametag{position:absolute;top:62px;font-size:12px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+  .nametag.left{left:14px}
+  .nametag.right{right:14px}
+
+  #holeinfo{position:absolute;top:calc(16px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+    background:rgba(21,24,28,.75);color:#fff;border-radius:14px;padding:6px 14px;text-align:center;
+    font-size:13px;font-weight:700;letter-spacing:.3px;backdrop-filter:blur(6px)}
+  #holeinfo small{display:block;font-size:11px;opacity:.75;font-weight:600}
+
+  .iconbtn{position:absolute;width:44px;height:44px;border-radius:12px;background:rgba(21,24,28,.72);
+    color:#fff;border:0;display:grid;place-items:center;pointer-events:auto;cursor:pointer;
+    backdrop-filter:blur(6px);box-shadow:0 2px 8px rgba(0,0,0,.2)}
+  .iconbtn:active{transform:scale(.94)}
+  #btnZoom{right:14px;bottom:calc(20px + env(safe-area-inset-bottom))}
+  #btnCard{right:14px;bottom:calc(74px + env(safe-area-inset-bottom))}
+  .iconbtn svg{width:22px;height:22px}
+
+  #power{position:absolute;left:14px;bottom:calc(20px + env(safe-area-inset-bottom));
+    width:14px;height:150px;border-radius:8px;background:rgba(21,24,28,.5);overflow:hidden;opacity:0;
+    transition:opacity .15s}
+  #power.on{opacity:1}
+  #powerfill{position:absolute;bottom:0;left:0;right:0;height:0%;
+    background:linear-gradient(to top,#5ee06a,#ffd53d 55%,#ff5252)}
+
+  #toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.85);
+    background:rgba(21,24,28,.9);color:#fff;padding:14px 26px;border-radius:18px;font-size:22px;
+    font-weight:800;opacity:0;transition:opacity .2s,transform .2s;text-align:center;white-space:nowrap}
+  #toast.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  #toast small{display:block;font-size:13px;font-weight:600;opacity:.8;margin-top:3px}
+
+  #turnbar{position:absolute;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));
+    transform:translateX(-50%);background:rgba(21,24,28,.8);color:#fff;padding:9px 18px;border-radius:20px;
+    font-size:14px;font-weight:700;backdrop-filter:blur(6px);transition:opacity .2s}
+
+  /* ---------- Screens ---------- */
+  .screen{position:fixed;inset:0;z-index:20;background:linear-gradient(170deg,#2f9a3a,#1c6b28 60%,#14401d);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:26px;
+    text-align:center;color:#fff}
+  .screen.hide{display:none}
+  .screen h1{margin:0;font-size:42px;font-weight:900;letter-spacing:-1px;
+    text-shadow:0 4px 0 rgba(0,0,0,.18)}
+  .screen p{margin:0;opacity:.85;font-size:14px;max-width:320px;line-height:1.5}
+  .btn{pointer-events:auto;border:0;cursor:pointer;background:#fff;color:#14401d;font-weight:800;
+    font-size:17px;padding:15px 30px;border-radius:16px;min-width:230px;
+    box-shadow:0 4px 0 rgba(0,0,0,.2);transition:transform .08s}
+  .btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.2)}
+  .btn.alt{background:rgba(255,255,255,.14);color:#fff;box-shadow:0 4px 0 rgba(0,0,0,.14)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .field{pointer-events:auto;border:0;border-radius:14px;padding:14px 16px;font-size:20px;width:230px;
+    text-align:center;font-weight:800;letter-spacing:4px;text-transform:uppercase;
+    background:rgba(255,255,255,.14);color:#fff;outline:none}
+  .field::placeholder{color:rgba(255,255,255,.45);letter-spacing:2px}
+  .code{font-size:44px;font-weight:900;letter-spacing:10px;padding:10px 0 4px 14px;
+    background:rgba(255,255,255,.12);border-radius:16px;width:250px}
+  .err{color:#ffc4c4;font-size:13px;min-height:18px;font-weight:600}
+  .spin{width:26px;height:26px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;
+    border-radius:50%;animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---------- Scorecard ---------- */
+  #card{position:fixed;inset:0;z-index:30;background:rgba(10,14,12,.86);display:flex;
+    align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px)}
+  #card.hide{display:none}
+  .cardbox{background:#fff;border-radius:20px;padding:18px;width:100%;max-width:430px;color:#1d2320;
+    box-shadow:0 20px 50px rgba(0,0,0,.4)}
+  .cardbox h2{margin:0 0 12px;font-size:20px;text-align:center;font-weight:900}
+  table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  th,td{padding:7px 2px;text-align:center}
+  thead th{font-size:11px;color:#7d8680;font-weight:800;border-bottom:2px solid #eceeeb}
+  tbody td{border-bottom:1px solid #f2f4f1}
+  tbody tr td:first-child{text-align:left;font-weight:800;padding-left:6px}
+  td.tot{font-weight:900;background:#f4f6f3;border-radius:6px}
+  .u{color:#d64545;font-weight:800}
+  .o{color:#3b7ad6;font-weight:800}
+  .cardbox .btn{width:100%;min-width:0;margin-top:14px;background:#2f9a3a;color:#fff}
+  .par-row td{color:#7d8680;font-weight:700}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<!-- ================= HUD ================= -->
+<div id="hud" style="display:none">
+  <div class="chip left">
+    <div class="av p1" id="av0">🙂</div>
+    <div class="strokes" id="st0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 3v13"/><path d="M9 16c-3 0-5 2-5 4"/><path d="M9 6l6 3-6 3"/></svg><span>0</span></div>
+  </div>
+  <div class="nametag left" id="nm0">You</div>
+
+  <div class="chip right">
+    <div class="av p2" id="av1">😀</div>
+    <div class="strokes" id="st1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 3v13"/><path d="M9 16c-3 0-5 2-5 4"/><path d="M9 6l6 3-6 3"/></svg><span>0</span></div>
+  </div>
+  <div class="nametag right" id="nm1">Rival</div>
+
+  <div id="holeinfo">HOLE 1<small>PAR 3</small></div>
+
+  <button class="iconbtn" id="btnCard" title="Scorecard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+  </button>
+  <button class="iconbtn" id="btnZoom" title="Toggle view">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4"/><path d="M20 9V5a1 1 0 0 0-1-1h-4"/><path d="M4 15v4a1 1 0 0 0 1 1h4"/><path d="M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
+  </button>
+
+  <div id="power"><div id="powerfill"></div></div>
+  <div id="turnbar">Your turn</div>
+  <div id="toast"></div>
+</div>
+
+<!-- ================= MENU ================= -->
+<div class="screen" id="scMenu">
+  <h1>MINI GOLF</h1>
+  <p>9 random holes. Lowest total score wins. Play a friend on another device.</p>
+  <button class="btn" id="bHost">Create Game</button>
+  <button class="btn alt" id="bJoinScreen">Join Game</button>
+  <button class="btn alt" id="bSolo">Solo Practice</button>
+</div>
+
+<!-- ================= HOST LOBBY ================= -->
+<div class="screen hide" id="scHost">
+  <h1>Room Code</h1>
+  <div class="code" id="hostCode">----</div>
+  <p id="hostMsg">Share this code. Waiting for your opponent…</p>
+  <div class="spin" id="hostSpin"></div>
+  <button class="btn alt" id="bHostBack">Back</button>
+</div>
+
+<!-- ================= JOIN ================= -->
+<div class="screen hide" id="scJoin">
+  <h1>Join Game</h1>
+  <input class="field" id="joinCode" placeholder="CODE" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false">
+  <div class="err" id="joinErr"></div>
+  <button class="btn" id="bJoin">Join</button>
+  <button class="btn alt" id="bJoinBack">Back</button>
+</div>
+
+<!-- ================= SCORECARD ================= -->
+<div id="card" class="hide">
+  <div class="cardbox">
+    <h2 id="cardTitle">Scorecard</h2>
+    <table>
+      <thead><tr id="cardHead"></tr></thead>
+      <tbody id="cardBody"></tbody>
+    </table>
+    <button class="btn" id="bCardClose">Close</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+const COLS = 15, ROWS = 32, CELL = 40;
+const WORLD_W = COLS * CELL, WORLD_H = ROWS * CELL;
+
+const T_WALL = 0, T_GREEN = 1, T_SAND = 2, T_WATER = 3, T_BOOST = 4, T_PORTAL = 5;
+
+const BALL_R      = 7.5;
+const HOLE_R      = 13;
+const MAX_SPEED   = 1250;    // px/s at full power
+const MAX_DRAG    = 130;     // screen px for full power
+const REST        = 0.62;    // wall bounciness
+const STOP_SPEED  = 9;
+const HOLE_CATCH  = 340;     // max speed to drop in
+const BOOST_ACC   = 1500;
+const SHOT_TIMEOUT= 14;      // seconds before force-stop
+const STROKE_LIMIT= 8;
+const HOLES       = 9;
+const DT          = 1 / 120;
+
+const SCORE_NAMES = {'-4':'Condor','-3':'Albatross','-2':'Eagle','-1':'Birdie','0':'Par',
+                     '1':'Bogey','2':'Double Bogey','3':'Triple Bogey'};
+
+/* ============================================================
+   SEEDED RNG  (identical courses on both devices)
+   ============================================================ */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ============================================================
+   COURSE GENERATION
+   A course is a grid. We carve a corridor from tee to hole with
+   random turns, then stamp hazards and inner obstacles, checking
+   after every change that tee -> hole is still reachable.
+   ============================================================ */
+function genCourse(seed){
+  const rnd = mulberry32(seed >>> 0);
+  const ri = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
+
+  const tiles = new Uint8Array(COLS * ROWS);          // T_* per cell
+  const boost = new Int8Array(COLS * ROWS * 2);       // boost dir per cell (dx,dy)
+  const portal = new Int32Array(COLS * ROWS).fill(-1);// linked cell index
+
+  const idx = (c, r) => r * COLS + c;
+  const inb = (c, r) => c >= 0 && c < COLS && r >= 0 && r < ROWS;
+
+  const W = ri(3, 4);                                  // corridor width in cells
+  const carve = (c0, r0, c1, r1) => {
+    for (let r = Math.max(0, r0); r <= Math.min(ROWS - 1, r1); r++)
+      for (let c = Math.max(0, c0); c <= Math.min(COLS - 1, c1); c++)
+        tiles[idx(c, r)] = T_GREEN;
+  };
+
+  // --- carve the corridor: up, turn, up, turn ... ---
+  let c = ri(1, COLS - W - 1);
+  let r = ROWS - W - 1;
+  const teeC = c, teeR = r;
+  const segs = ri(4, 6);
+
+  for (let s = 0; s < segs; s++){
+    // vertical run upward
+    const vlen = ri(3, 6);
+    const nr = Math.max(1, r - vlen);
+    carve(c, nr, c + W - 1, r + W - 1);
+    r = nr;
+    if (r <= 1) break;
+
+    // horizontal turn
+    const hlen = ri(3, 6);
+    const left = rnd() < 0.5;
+    let nc = left ? c - hlen : c + hlen;
+    nc = Math.max(1, Math.min(COLS - W - 1, nc));
+    carve(Math.min(c, nc), r, Math.max(c, nc) + W - 1, r + W - 1);
+    c = nc;
+  }
+  const holeC = c, holeR = r;
+
+  const teeCell  = idx(teeC  + (W >> 1), teeR  + (W >> 1));
+  const holeCell = idx(holeC + (W >> 1), holeR + (W >> 1));
+
+  // --- reachability (BFS over playable cells) ---
+  const reach = () => {
+    const seen = new Uint8Array(COLS * ROWS);
+    const q = [teeCell]; seen[teeCell] = 1;
+    let dist = new Int32Array(COLS * ROWS).fill(-1); dist[teeCell] = 0;
+    for (let h = 0; h < q.length; h++){
+      const cur = q[h], cc = cur % COLS, cr = (cur / COLS) | 0;
+      const nb = [[cc+1,cr],[cc-1,cr],[cc,cr+1],[cc,cr-1]];
+      for (const [x, y] of nb){
+        if (!inb(x, y)) continue;
+        const n = idx(x, y);
+        if (seen[n] || tiles[n] === T_WALL) continue;
+        seen[n] = 1; dist[n] = dist[cur] + 1; q.push(n);
+      }
+    }
+    return { ok: seen[holeCell] === 1, dist, seen };
+  };
+  if (!reach().ok) return genCourse(seed + 1);   // pathological layout, reroll
+
+  const playable = [];
+  for (let i = 0; i < tiles.length; i++) if (tiles[i] !== T_WALL) playable.push(i);
+
+  const far = (i, cell, n) => {
+    const a = { c: i % COLS, r: (i / COLS) | 0 }, b = { c: cell % COLS, r: (cell / COLS) | 0 };
+    return Math.abs(a.c - b.c) + Math.abs(a.r - b.r) > n;
+  };
+  const freeSpot = (w, h) => {                 // find a rect of green cells not near tee/hole
+    for (let tries = 0; tries < 60; tries++){
+      const p = playable[ri(0, playable.length - 1)];
+      const pc = p % COLS, pr = (p / COLS) | 0;
+      if (!far(p, teeCell, 3) || !far(p, holeCell, 3)) continue;
+      let ok = true;
+      for (let y = pr; y < pr + h && ok; y++)
+        for (let x = pc; x < pc + w && ok; x++)
+          if (!inb(x, y) || tiles[idx(x, y)] !== T_GREEN) ok = false;
+      if (ok) return { c: pc, r: pr };
+    }
+    return null;
+  };
+  const stamp = (spot, w, h, type) => {
+    for (let y = spot.r; y < spot.r + h; y++)
+      for (let x = spot.c; x < spot.c + w; x++) tiles[idx(x, y)] = type;
+  };
+
+  // --- inner obstacles (walls inside the fairway) ---
+  const nObst = ri(1, 3);
+  for (let i = 0; i < nObst; i++){
+    const w = ri(1, 2), h = ri(1, 2);
+    const spot = freeSpot(w, h);
+    if (!spot) continue;
+    const saved = [];
+    for (let y = spot.r; y < spot.r + h; y++)
+      for (let x = spot.c; x < spot.c + w; x++){ saved.push([idx(x,y), tiles[idx(x,y)]]); tiles[idx(x,y)] = T_WALL; }
+    if (!reach().ok) for (const [k, v] of saved) tiles[k] = v;   // would seal the hole: undo
+  }
+
+  // --- sand traps ---
+  for (let i = 0, n = ri(1, 3); i < n; i++){
+    const w = ri(2, 3), h = ri(2, 3), spot = freeSpot(w, h);
+    if (spot) stamp(spot, w, h, T_SAND);
+  }
+  // --- water hazards (later holes only, keeps hole 1-2 gentle) ---
+  if (seed % 3 !== 0){
+    for (let i = 0, n = ri(0, 2); i < n; i++){
+      const w = ri(2, 3), h = ri(2, 2), spot = freeSpot(w, h);
+      if (spot) stamp(spot, w, h, T_WATER);
+    }
+  }
+  // --- boost pads (push along a cardinal direction) ---
+  for (let i = 0, n = ri(0, 2); i < n; i++){
+    const w = ri(2, 3), h = ri(1, 2), spot = freeSpot(w, h);
+    if (!spot) continue;
+    const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+    const d = dirs[ri(0, 3)];
+    stamp(spot, w, h, T_BOOST);
+    for (let y = spot.r; y < spot.r + h; y++)
+      for (let x = spot.c; x < spot.c + w; x++){
+        boost[idx(x,y) * 2]     = d[0];
+        boost[idx(x,y) * 2 + 1] = d[1];
+      }
+  }
+  // --- portal pair ---
+  if (rnd() < 0.55){
+    const a = freeSpot(1, 1);
+    const b = a ? freeSpot(1, 1) : null;
+    if (a && b && (Math.abs(a.r - b.r) + Math.abs(a.c - b.c)) > 8){
+      const ia = idx(a.c, a.r), ib = idx(b.c, b.r);
+      tiles[ia] = T_PORTAL; tiles[ib] = T_PORTAL;
+      portal[ia] = ib; portal[ib] = ia;
+    }
+  }
+
+  // hazards can't strand the ball — if something broke, reroll the whole hole
+  if (!reach().ok) return genCourse(seed + 977);
+
+  // --- par from walking distance ---
+  const d = reach().dist[holeCell];
+  const par = Math.max(2, Math.min(5, 1 + Math.round((d - 10) / 11)));
+
+  return {
+    tiles, boost, portal, par,
+    tee:  { x: (teeC  + W / 2) * CELL, y: (teeR  + W / 2) * CELL },
+    hole: { x: (holeC + W / 2) * CELL, y: (holeR + W / 2) * CELL }
+  };
+}
+
+/* ============================================================
+   GAME STATE
+   ============================================================ */
+const G = {
+  mode: 'menu',          // menu | play
+  online: false,
+  isHost: false,
+  seed: 0,
+  hole: 0,
+  course: null,
+  me: 0,                 // my player index
+  turn: 0,               // whose shot it is
+  players: [],
+  aiming: false,
+  aim: { x: 0, y: 0 },
+  simTime: 0,
+  busy: false,           // a shot is in flight
+  overview: false,
+  viewLock: 0            // seconds of forced overview at hole start
+};
+
+function newPlayer(name, color){
+  return { name, color, scores: new Array(HOLES).fill(null), strokes: 0,
+           holed: false, ball: { x: 0, y: 0, vx: 0, vy: 0, moving: false, portalCd: 0 },
+           lastRest: { x: 0, y: 0 } };
+}
+
+/* ============================================================
+   CANVAS + CAMERA
+   ============================================================ */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let VW = 0, VH = 0, DPR = 1;
+const cam = { x: WORLD_W / 2, y: WORLD_H / 2, zoom: 1, tx: 0, ty: 0, tz: 1 };
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  VW = window.innerWidth; VH = window.innerHeight;
+  cv.width = Math.round(VW * DPR); cv.height = Math.round(VH * DPR);
+  cv.style.width = VW + 'px'; cv.style.height = VH + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const fitZoom  = () => Math.min(VW / WORLD_W, VH / WORLD_H) * 0.94;
+const playZoom = () => Math.min(VW / (9.5 * CELL), VH / (13 * CELL));
+
+function updateCamera(dt){
+  const overview = G.overview || G.viewLock > 0;
+  if (overview){
+    cam.tz = fitZoom();
+    cam.tx = WORLD_W / 2; cam.ty = WORLD_H / 2;
+  } else {
+    cam.tz = playZoom();
+    const b = focusBall();
+    cam.tx = b.x; cam.ty = b.y;
+    // keep the camera inside the world when the view is smaller than the course
+    const halfW = VW / (2 * cam.tz), halfH = VH / (2 * cam.tz);
+    cam.tx = (halfW * 2 >= WORLD_W) ? WORLD_W / 2 : Math.max(halfW, Math.min(WORLD_W - halfW, cam.tx));
+    cam.ty = (halfH * 2 >= WORLD_H) ? WORLD_H / 2 : Math.max(halfH, Math.min(WORLD_H - halfH, cam.ty));
+  }
+  const k = 1 - Math.pow(0.0035, dt);
+  cam.x += (cam.tx - cam.x) * k;
+  cam.y += (cam.ty - cam.y) * k;
+  cam.zoom += (cam.tz - cam.zoom) * k;
+}
+function focusBall(){
+  const moving = G.players.find(p => p.ball.moving);
+  if (moving) return moving.ball;
+  const p = G.players[G.turn];
+  return p ? p.ball : { x: WORLD_W / 2, y: WORLD_H / 2 };
+}
+const w2s = (x, y) => ({ x: (x - cam.x) * cam.zoom + VW / 2, y: (y - cam.y) * cam.zoom + VH / 2 });
+const s2w = (x, y) => ({ x: (x - VW / 2) / cam.zoom + cam.x, y: (y - VH / 2) / cam.zoom + cam.y });
+
+/* ============================================================
+   PHYSICS
+   ============================================================ */
+const tileAtCell = (c, r) => (c < 0 || c >= COLS || r < 0 || r >= ROWS) ? T_WALL : G.course.tiles[r * COLS + c];
+const tileAt = (x, y) => tileAtCell(Math.floor(x / CELL), Math.floor(y / CELL));
+const isWall = (c, r) => tileAtCell(c, r) === T_WALL;
+
+function resolveWalls(b){
+  const c0 = Math.floor((b.x - BALL_R) / CELL), c1 = Math.floor((b.x + BALL_R) / CELL);
+  const r0 = Math.floor((b.y - BALL_R) / CELL), r1 = Math.floor((b.y + BALL_R) / CELL);
+  for (let r = r0; r <= r1; r++){
+    for (let c = c0; c <= c1; c++){
+      if (!isWall(c, r)) continue;
+      const bx = c * CELL, by = r * CELL;
+      const nx = Math.max(bx, Math.min(b.x, bx + CELL));
+      const ny = Math.max(by, Math.min(b.y, by + CELL));
+      let dx = b.x - nx, dy = b.y - ny;
+      let d2 = dx * dx + dy * dy;
+
+      if (d2 > BALL_R * BALL_R) continue;
+
+      if (d2 < 1e-6){
+        // centre is inside the block: eject along the shallowest face
+        const cand = [[bx - BALL_R - b.x, 0, -1, 0], [bx + CELL + BALL_R - b.x, 0, 1, 0],
+                      [0, by - BALL_R - b.y, 0, -1], [0, by + CELL + BALL_R - b.y, 0, 1]];
+        let best = cand[0], bd = Infinity;
+        for (const k of cand){ const m = Math.abs(k[0] + k[1]); if (m < bd){ bd = m; best = k; } }
+        b.x += best[0]; b.y += best[1];
+        if (best[2]) b.vx = -b.vx * REST; else b.vy = -b.vy * REST;
+        continue;
+      }
+      const d = Math.sqrt(d2), inx = dx / d, iny = dy / d;
+      b.x = nx + inx * BALL_R;
+      b.y = ny + iny * BALL_R;
+      const dot = b.vx * inx + b.vy * iny;
+      if (dot < 0){
+        b.vx -= (1 + REST) * dot * inx;
+        b.vy -= (1 + REST) * dot * iny;
+      }
+    }
+  }
+}
+
+function stepBall(p, dt){
+  const b = p.ball;
+  if (!b.moving) return;
+
+  const t = tileAt(b.x, b.y);
+
+  // surface friction
+  let fric = 0.9925;
+  if (t === T_SAND) fric = 0.90;
+  b.vx *= Math.pow(fric, dt * 60);
+  b.vy *= Math.pow(fric, dt * 60);
+
+  // boost pads
+  if (t === T_BOOST){
+    const i = (Math.floor(b.y / CELL) * COLS + Math.floor(b.x / CELL)) * 2;
+    b.vx += G.course.boost[i]     * BOOST_ACC * dt;
+    b.vy += G.course.boost[i + 1] * BOOST_ACC * dt;
+  }
+
+  // gentle pull toward the cup so near-misses drop
+  const hd = Math.hypot(G.course.hole.x - b.x, G.course.hole.y - b.y);
+  if (hd < HOLE_R * 2.2 && hd > 0.01){
+    const a = 700 * (1 - hd / (HOLE_R * 2.2));
+    b.vx += (G.course.hole.x - b.x) / hd * a * dt;
+    b.vy += (G.course.hole.y - b.y) / hd * a * dt;
+  }
+
+  // integrate in small substeps so fast shots can't tunnel through walls
+  const dist = Math.hypot(b.vx, b.vy) * dt;
+  const steps = Math.max(1, Math.ceil(dist / (BALL_R * 0.5)));
+  for (let s = 0; s < steps; s++){
+    b.x += b.vx * dt / steps;
+    b.y += b.vy * dt / steps;
+    resolveWalls(b);
+  }
+
+  if (b.portalCd > 0) b.portalCd -= dt;
+
+  // portals
+  if (t === T_PORTAL && b.portalCd <= 0){
+    const here = Math.floor(b.y / CELL) * COLS + Math.floor(b.x / CELL);
+    const dest = G.course.portal[here];
+    if (dest >= 0){
+      b.x = (dest % COLS + 0.5) * CELL;
+      b.y = ((dest / COLS | 0) + 0.5) * CELL;
+      b.portalCd = 0.45;
+      sfxPing();
+    }
+  }
+
+  // cup
+  if (hd < HOLE_R && Math.hypot(b.vx, b.vy) < HOLE_CATCH){
+    b.moving = false; b.vx = b.vy = 0;
+    b.x = G.course.hole.x; b.y = G.course.hole.y;
+    p.sunk = true;
+    return;
+  }
+
+  // water
+  if (t === T_WATER){
+    b.moving = false; b.vx = b.vy = 0;
+    p.splashed = true;
+    return;
+  }
+
+  if (Math.hypot(b.vx, b.vy) < STOP_SPEED){
+    b.moving = false; b.vx = b.vy = 0;
+  }
+}
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function draw(){
+  ctx.fillStyle = '#d7d4ce';
+  ctx.fillRect(0, 0, VW, VH);
+  if (!G.course) return;
+
+  ctx.save();
+  ctx.translate(VW / 2, VH / 2);
+  ctx.scale(cam.zoom, cam.zoom);
+  ctx.translate(-cam.x, -cam.y);
+
+  const tiles = G.course.tiles;
+
+  // --- surfaces ---
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      const t = tiles[r * COLS + c];
+      if (t === T_WALL) continue;
+      const x = c * CELL, y = r * CELL;
+      ctx.fillStyle = t === T_SAND  ? '#e5d7a6'
+                    : t === T_WATER ? '#3f9fdc'
+                    : t === T_BOOST ? '#63cf67'
+                    : '#43b14b';
+      ctx.fillRect(x, y, CELL + 0.6, CELL + 0.6);
+    }
+  }
+
+  // --- boost arrows ---
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      if (tiles[r * COLS + c] !== T_BOOST) continue;
+      const i = (r * COLS + c) * 2;
+      const dx = G.course.boost[i], dy = G.course.boost[i + 1];
+      const x = c * CELL + CELL / 2, y = r * CELL + CELL / 2;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
+      ctx.fillStyle = 'rgba(255,255,255,.55)';
+      ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(8, 4); ctx.lineTo(-8, 4); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // --- water ripples ---
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      if (tiles[r * COLS + c] !== T_WATER) continue;
+      const x = c * CELL, y = r * CELL;
+      ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      const off = Math.sin(perfNow / 600 + c + r) * 3;
+      ctx.beginPath(); ctx.moveTo(x + 9 + off, y + 14); ctx.lineTo(x + 22 + off, y + 14); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + 16 - off, y + 27); ctx.lineTo(x + 31 - off, y + 27); ctx.stroke();
+    }
+  }
+
+  // --- walls: white edge wherever green meets non-green ---
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      if (tiles[r * COLS + c] === T_WALL) continue;
+      const x = c * CELL, y = r * CELL;
+      if (isWall(c, r - 1)){ ctx.moveTo(x, y);               ctx.lineTo(x + CELL, y); }
+      if (isWall(c, r + 1)){ ctx.moveTo(x, y + CELL);        ctx.lineTo(x + CELL, y + CELL); }
+      if (isWall(c - 1, r)){ ctx.moveTo(x, y);               ctx.lineTo(x, y + CELL); }
+      if (isWall(c + 1, r)){ ctx.moveTo(x + CELL, y);        ctx.lineTo(x + CELL, y + CELL); }
+    }
+  }
+  ctx.stroke();
+
+  // --- portals ---
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      if (tiles[r * COLS + c] !== T_PORTAL) continue;
+      const x = c * CELL + CELL / 2, y = r * CELL + CELL / 2;
+      ctx.fillStyle = '#f5cf3d';
+      ctx.beginPath(); ctx.arc(x, y, 17, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.translate(x, y); ctx.rotate(perfNow / 1400);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+      for (let k = 0; k < 4; k++){
+        ctx.rotate(Math.PI / 2);
+        ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(0, -10); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-3, -7); ctx.lineTo(0, -11); ctx.lineTo(3, -7); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // --- tee marker ---
+  ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(G.course.tee.x, G.course.tee.y, 11, 0, Math.PI * 2); ctx.stroke();
+
+  // --- cup ---
+  const h = G.course.hole;
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.arc(h.x, h.y + 2, HOLE_R + 2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#17300f';
+  ctx.beginPath(); ctx.arc(h.x, h.y, HOLE_R, 0, Math.PI * 2); ctx.fill();
+  // flag
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.6;
+  ctx.beginPath(); ctx.moveTo(h.x, h.y - 2); ctx.lineTo(h.x, h.y - 34); ctx.stroke();
+  ctx.fillStyle = '#ff4d4d';
+  ctx.beginPath(); ctx.moveTo(h.x, h.y - 34); ctx.lineTo(h.x + 19, h.y - 28); ctx.lineTo(h.x, h.y - 22); ctx.closePath(); ctx.fill();
+
+  // --- aim guide ---
+  if (G.aiming && canShoot()){
+    const b = G.players[G.me].ball;
+    const dx = G.aim.x, dy = G.aim.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 3){
+      const pow = Math.min(1, len / MAX_DRAG);
+      const ux = dx / len, uy = dy / len;
+      ctx.save();
+      ctx.setLineDash([7, 8]); ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(255,255,255,${0.35 + pow * 0.5})`;
+      ctx.beginPath(); ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x + ux * (40 + pow * 150), b.y + uy * (40 + pow * 150));
+      ctx.stroke();
+      ctx.restore();
+      // pull-back stub behind the ball
+      ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x - ux * pow * 34, b.y - uy * pow * 34); ctx.stroke();
+    }
+  }
+
+  // --- balls ---
+  G.players.forEach((p, i) => {
+    const b = p.ball;
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.beginPath(); ctx.ellipse(b.x, b.y + 3.5, BALL_R, BALL_R * 0.75, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = i === 0 ? '#ffffff' : '#ff5d5d';
+    ctx.beginPath(); ctx.arc(b.x, b.y, BALL_R, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath(); ctx.arc(b.x - 2.2, b.y - 2.4, BALL_R * 0.33, 0, Math.PI * 2); ctx.fill();
+    // ring on whoever is about to play
+    if (i === G.turn && !G.busy && !p.holed){
+      ctx.strokeStyle = i === 0 ? 'rgba(255,255,255,.85)' : 'rgba(255,93,93,.85)';
+      ctx.lineWidth = 2;
+      const rr = BALL_R + 5 + Math.sin(perfNow / 260) * 2;
+      ctx.beginPath(); ctx.arc(b.x, b.y, rr, 0, Math.PI * 2); ctx.stroke();
+    }
+  });
+
+  ctx.restore();
+}
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+let perfNow = 0, lastT = 0, acc = 0;
+function loop(t){
+  requestAnimationFrame(loop);
+  perfNow = t;
+  const dt = Math.min(0.05, (t - lastT) / 1000 || 0);
+  lastT = t;
+  if (G.viewLock > 0) G.viewLock -= dt;
+
+  if (G.mode === 'play'){
+    acc += dt;
+    let guard = 0;
+    while (acc >= DT && guard++ < 12){
+      acc -= DT;
+      G.players.forEach(p => stepBall(p, DT));
+      if (G.busy){
+        G.simTime += DT;
+        if (G.simTime > SHOT_TIMEOUT) G.players.forEach(p => { p.ball.moving = false; p.ball.vx = p.ball.vy = 0; });
+      }
+    }
+    if (G.busy && !G.players.some(p => p.ball.moving)) shotSettled();
+    updateCamera(dt);
+  }
+  draw();
+}
+requestAnimationFrame(loop);
+
+/* ============================================================
+   SHOT FLOW
+   ============================================================ */
+const canShoot = () =>
+  G.mode === 'play' && !G.busy && G.turn === G.me &&
+  G.players[G.me] && !G.players[G.me].holed;
+
+function takeShot(ang, pow, broadcast){
+  const p = G.players[G.turn];
+  if (!p || p.holed) return;
+  p.strokes++;
+  p.lastRest = { x: p.ball.x, y: p.ball.y };
+  p.sunk = false; p.splashed = false;
+  p.ball.vx = Math.cos(ang) * pow * MAX_SPEED;
+  p.ball.vy = Math.sin(ang) * pow * MAX_SPEED;
+  p.ball.moving = true;
+  p.ball.portalCd = 0.25;
+  G.busy = true; G.simTime = 0;
+  sfxHit(pow);
+  updateHUD();
+  if (broadcast && G.online) net.send({ t: 'shot', hole: G.hole, idx: G.turn, ang, pow });
+}
+
+function shotSettled(){
+  const p = G.players[G.turn];
+  if (!p){ G.busy = false; return; }
+
+  if (p.splashed){
+    p.strokes++;                                  // water penalty
+    p.ball.x = p.lastRest.x; p.ball.y = p.lastRest.y;
+    p.splashed = false;
+    flash('Water!', '+1 stroke');
+  }
+  if (p.sunk){
+    p.holed = true;
+    p.scores[G.hole] = p.strokes;
+    const rel = p.strokes - G.course.par;
+    flash(p.strokes === 1 ? 'Hole in One!' : (SCORE_NAMES[rel] || `+${rel}`),
+          `${p.name} · ${p.strokes} stroke${p.strokes > 1 ? 's' : ''}`);
+    sfxDrop();
+  } else if (p.strokes >= STROKE_LIMIT){
+    p.holed = true;
+    p.scores[G.hole] = STROKE_LIMIT;
+    flash('Max strokes', `${p.name} picks up`);
+  }
+
+  // the shooter is the source of truth for where the ball ended up
+  if (G.online && G.turn === G.me){
+    net.send({ t: 'rest', hole: G.hole, idx: G.me,
+               x: p.ball.x, y: p.ball.y, strokes: p.strokes, holed: p.holed,
+               score: p.scores[G.hole] });
+  }
+
+  G.busy = false;
+  advanceTurn();
+  updateHUD();
+}
+
+function advanceTurn(){
+  if (G.players.every(p => p.holed)){
+    setTimeout(nextHole, 1400);
+    return;
+  }
+  for (let i = 1; i <= G.players.length; i++){
+    const n = (G.turn + i) % G.players.length;
+    if (!G.players[n].holed){ G.turn = n; break; }
+  }
+}
+
+function nextHole(){
+  G.hole++;
+  if (G.hole >= HOLES){ endGame(); return; }
+  loadHole();
+}
+
+function loadHole(){
+  G.course = genCourse(G.seed + G.hole * 7919);
+  parCache[G.hole] = G.course.par;
+  G.players.forEach(p => {
+    p.strokes = 0; p.holed = false; p.sunk = false; p.splashed = false;
+    p.ball.x = G.course.tee.x + (p === G.players[1] ? 9 : -9);
+    p.ball.y = G.course.tee.y;
+    p.ball.vx = p.ball.vy = 0; p.ball.moving = false; p.ball.portalCd = 0;
+    p.lastRest = { x: p.ball.x, y: p.ball.y };
+  });
+  G.turn = 0;
+  G.busy = false;
+  G.viewLock = 1.6;                       // show the whole hole for a beat
+  cam.x = WORLD_W / 2; cam.y = WORLD_H / 2; cam.zoom = fitZoom();
+  updateHUD();
+  flash(`Hole ${G.hole + 1}`, `Par ${G.course.par}`);
+}
+
+function endGame(){
+  G.mode = 'over';
+  showCard(true);
+}
+
+/* ============================================================
+   INPUT
+   ============================================================ */
+let dragging = false, dragStart = null;
+
+cv.addEventListener('pointerdown', e => {
+  if (!canShoot()) return;
+  dragging = true; G.aiming = true;
+  dragStart = { x: e.clientX, y: e.clientY };
+  G.aim = { x: 0, y: 0 };
+  cv.setPointerCapture(e.pointerId);
+  powerEl.classList.add('on');
+});
+cv.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  // drag away from the target to pull back, like a real putter
+  const dx = dragStart.x - e.clientX, dy = dragStart.y - e.clientY;
+  G.aim = { x: dx, y: dy };
+  const pow = Math.min(1, Math.hypot(dx, dy) / MAX_DRAG);
+  powerFill.style.height = (pow * 100) + '%';
+});
+function endDrag(){
+  if (!dragging) return;
+  dragging = false; G.aiming = false;
+  powerEl.classList.remove('on');
+  powerFill.style.height = '0%';
+  const len = Math.hypot(G.aim.x, G.aim.y);
+  if (len < 12 || !canShoot()) return;
+  const pow = Math.min(1, len / MAX_DRAG);
+  const ang = Math.atan2(G.aim.y, G.aim.x);
+  takeShot(ang, pow, true);
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+
+/* ============================================================
+   HUD
+   ============================================================ */
+const hud = document.getElementById('hud');
+const powerEl = document.getElementById('power');
+const powerFill = document.getElementById('powerfill');
+const toastEl = document.getElementById('toast');
+const turnbar = document.getElementById('turnbar');
+
+function updateHUD(){
+  if (G.mode !== 'play' && G.mode !== 'over') return;
+  for (let i = 0; i < 2; i++){
+    const p = G.players[i];
+    const st = document.getElementById('st' + i);
+    const nm = document.getElementById('nm' + i);
+    if (!p || !st) continue;
+    st.querySelector('span').textContent = p.holed ? (p.scores[G.hole] ?? p.strokes) : p.strokes;
+    st.classList.toggle('active', i === G.turn && !G.busy);
+    nm.textContent = (G.online && i === G.me) ? 'You' : p.name;
+  }
+  document.getElementById('holeinfo').innerHTML =
+    `HOLE ${G.hole + 1}<small>PAR ${G.course ? G.course.par : '-'} · ${relTotalText()}</small>`;
+  const mine = G.turn === G.me;
+  turnbar.textContent = G.busy ? '' : (mine ? 'Your turn — drag to aim' : `${G.players[G.turn].name}'s turn`);
+  turnbar.style.opacity = G.busy ? 0 : 1;
+}
+
+function relTotal(i){
+  const p = G.players[i]; if (!p) return 0;
+  let rel = 0;
+  for (let h = 0; h < HOLES; h++){
+    if (p.scores[h] === null) continue;
+    rel += p.scores[h] - parOf(h);
+  }
+  return rel;
+}
+const parCache = {};
+function parOf(h){ return parCache[h] ?? 3; }
+function relTotalText(){
+  const r = relTotal(G.me);
+  return r === 0 ? 'EVEN' : (r > 0 ? `+${r}` : `${r}`);
+}
+
+let toastTimer = null;
+function flash(msg, sub){
+  toastEl.innerHTML = msg + (sub ? `<small>${sub}</small>` : '');
+  toastEl.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('on'), 1500);
+}
+
+document.getElementById('btnZoom').onclick = () => { G.overview = !G.overview; };
+document.getElementById('btnCard').onclick = () => showCard(false);
+document.getElementById('bCardClose').onclick = () => {
+  if (G.mode === 'over'){ location.reload(); return; }
+  document.getElementById('card').classList.add('hide');
+};
+
+function showCard(final){
+  // remember this hole's par so the scorecard stays accurate on later holes
+  if (G.course) parCache[G.hole] = G.course.par;
+  const head = document.getElementById('cardHead');
+  const body = document.getElementById('cardBody');
+  document.getElementById('cardTitle').textContent = final ? winnerText() : 'Scorecard';
+
+  head.innerHTML = '<th></th>' + Array.from({ length: HOLES }, (_, i) => `<th>${i + 1}</th>`).join('') + '<th>TOT</th>';
+
+  let html = '<tr class="par-row"><td>Par</td>' +
+    Array.from({ length: HOLES }, (_, i) => `<td>${parCache[i] ?? '–'}</td>`).join('') +
+    `<td class="tot">${Object.values(parCache).reduce((a, b) => a + b, 0) || '–'}</td></tr>`;
+
+  G.players.forEach((p, i) => {
+    html += `<tr><td>${(G.online && i === G.me) ? 'You' : p.name}</td>`;
+    let tot = 0;
+    for (let hIdx = 0; hIdx < HOLES; hIdx++){
+      const s = p.scores[hIdx];
+      if (s === null){ html += '<td>–</td>'; continue; }
+      tot += s;
+      const rel = s - (parCache[hIdx] ?? s);
+      const cls = rel < 0 ? 'u' : rel > 0 ? 'o' : '';
+      html += `<td class="${cls}">${s}</td>`;
+    }
+    html += `<td class="tot">${tot || '–'}</td></tr>`;
+  });
+  body.innerHTML = html;
+  document.getElementById('card').classList.remove('hide');
+}
+function winnerText(){
+  const tot = G.players.map(p => p.scores.reduce((a, b) => a + (b ?? 0), 0));
+  if (G.players.length < 2){
+    const r = relTotal(0);
+    return `Final: ${tot[0]} (${r === 0 ? 'even' : r > 0 ? '+' + r : r})`;
+  }
+  if (tot[0] === tot[1]) return 'Tied game!';
+  const w = tot[0] < tot[1] ? 0 : 1;
+  return (G.online && w === G.me) ? 'You win! 🏆' : `${G.players[w].name} wins! 🏆`;
+}
+
+/* ============================================================
+   SOUND (tiny WebAudio blips, no assets)
+   ============================================================ */
+let AC = null;
+const ac = () => (AC = AC || new (window.AudioContext || window.webkitAudioContext)());
+function blip(freq, dur, type, vol){
+  try{
+    const a = ac(), o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol ?? 0.09, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(); o.stop(a.currentTime + dur);
+  }catch(e){}
+}
+const sfxHit  = pow => blip(180 + pow * 220, 0.08, 'square', 0.06);
+const sfxPing = ()  => blip(880, 0.12, 'triangle', 0.05);
+const sfxDrop = ()  => { blip(520, 0.1, 'sine', 0.09); setTimeout(() => blip(780, 0.16, 'sine', 0.09), 90); };
+
+/* ============================================================
+   NETWORKING (PeerJS, host-relayed, turn-based)
+   Both sides generate identical courses from the shared seed and
+   simulate every shot locally; the shooter then sends the exact
+   resting position so the two views can never drift apart.
+   ============================================================ */
+const net = {
+  peer: null, conn: null, connected: false,
+
+  initHost(code){
+    return new Promise((resolve, reject) => {
+      const peer = new Peer('mgolf-' + code, { debug: 1 });
+      net.peer = peer;
+      peer.on('open', id => resolve(id));
+      peer.on('error', err => reject(err));
+      peer.on('connection', conn => {
+        if (net.conn){ conn.close(); return; }          // room is full
+        net.conn = conn;
+        conn.on('open', () => {
+          net.connected = true;
+          conn.on('data', m => net.recv(m));
+          conn.on('close', net.dropped);
+          startAsHost();
+        });
+      });
+    });
+  },
+
+  initClient(code){
+    return new Promise((resolve, reject) => {
+      const peer = new Peer({ debug: 0 });
+      net.peer = peer;
+      const timer = setTimeout(() => reject(new Error('timeout')), 12000);
+      peer.on('error', err => { clearTimeout(timer); reject(err); });
+      peer.on('open', () => {
+        const conn = peer.connect('mgolf-' + code, { reliable: true });
+        net.conn = conn;
+        conn.on('open', () => {
+          clearTimeout(timer);
+          net.connected = true;
+          conn.on('data', m => net.recv(m));
+          conn.on('close', net.dropped);
+          resolve();
+        });
+        conn.on('error', err => { clearTimeout(timer); reject(err); });
+      });
+    });
+  },
+
+  send(msg){ if (net.conn && net.connected) try{ net.conn.send(msg); }catch(e){} },
+
+  dropped(){
+    net.connected = false;
+    flash('Opponent left', 'Returning to menu');
+    setTimeout(() => location.reload(), 2200);
+  },
+
+  recv(m){
+    if (!m || !m.t) return;
+    switch (m.t){
+      case 'start':
+        G.seed = m.seed;
+        beginGame(1, m.hostName);
+        break;
+      case 'shot':
+        if (m.hole !== G.hole) return;
+        G.turn = m.idx;
+        takeShot(m.ang, m.pow, false);
+        break;
+      case 'rest': {
+        const p = G.players[m.idx];
+        if (!p || m.hole !== G.hole) return;
+        p.ball.x = m.x; p.ball.y = m.y;
+        p.ball.vx = p.ball.vy = 0; p.ball.moving = false;
+        p.strokes = m.strokes;
+        p.holed = m.holed;
+        p.scores[G.hole] = m.score ?? null;
+        updateHUD();
+        break;
+      }
+    }
+  }
+};
+
+/* ============================================================
+   FLOW / SCREENS
+   ============================================================ */
+const show = id => {
+  ['scMenu', 'scHost', 'scJoin'].forEach(s =>
+    document.getElementById(s).classList.toggle('hide', s !== id));
+  if (id === null) ['scMenu', 'scHost', 'scJoin'].forEach(s =>
+    document.getElementById(s).classList.add('hide'));
+};
+const randCode = () => {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no I/O/0/1
+  let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)];
+  return s;
+};
+
+function beginGame(myIndex, otherName){
+  G.mode = 'play';
+  G.me = myIndex;
+  G.players = myIndex === 0
+    ? [newPlayer('You', '#fff'), newPlayer(otherName || 'Rival', '#ff5d5d')]
+    : [newPlayer(otherName || 'Host', '#fff'), newPlayer('You', '#ff5d5d')];
+  G.hole = 0;
+  show(null);
+  hud.style.display = 'block';
+  document.getElementById('av0').textContent = '🙂';
+  document.getElementById('av1').textContent = '😀';
+  loadHole();
+}
+function startAsHost(){
+  G.seed = (Math.random() * 1e9) | 0;
+  net.send({ t: 'start', seed: G.seed, hostName: 'Host' });
+  beginGame(0, 'Rival');
+}
+
+// --- menu buttons ---
+document.getElementById('bHost').onclick = async () => {
+  G.online = true; G.isHost = true;
+  const code = randCode();
+  document.getElementById('hostCode').textContent = code;
+  document.getElementById('hostMsg').textContent = 'Share this code. Waiting for your opponent…';
+  show('scHost');
+  try{
+    await net.initHost(code);
+  }catch(err){
+    document.getElementById('hostMsg').textContent = 'Could not open a room. Check your connection and try again.';
+    document.getElementById('hostSpin').style.display = 'none';
+  }
+};
+document.getElementById('bHostBack').onclick = () => location.reload();
+document.getElementById('bJoinScreen').onclick = () => { show('scJoin'); document.getElementById('joinCode').focus(); };
+document.getElementById('bJoinBack').onclick = () => show('scMenu');
+
+document.getElementById('bJoin').onclick = async () => {
+  const code = document.getElementById('joinCode').value.trim().toUpperCase();
+  const err = document.getElementById('joinErr');
+  if (code.length !== 4){ err.textContent = 'Enter the 4-character code.'; return; }
+  G.online = true; G.isHost = false;
+  err.textContent = 'Connecting…';
+  document.getElementById('bJoin').disabled = true;
+  try{
+    await net.initClient(code);
+    err.textContent = 'Connected! Starting…';
+  }catch(e){
+    err.textContent = 'No game found with that code.';
+    document.getElementById('bJoin').disabled = false;
+    try{ net.peer && net.peer.destroy(); }catch(_){}
+  }
+};
+document.getElementById('joinCode').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('bJoin').click();
+});
+
+document.getElementById('bSolo').onclick = () => {
+  G.online = false;
+  G.seed = (Math.random() * 1e9) | 0;
+  G.mode = 'play';
+  G.me = 0;
+  G.players = [newPlayer('You', '#fff')];
+  G.hole = 0;
+  show(null);
+  hud.style.display = 'block';
+  document.querySelector('.chip.right').style.display = 'none';
+  document.getElementById('nm1').style.display = 'none';
+  loadHole();
+};
+</script>
+</body>
+</html>
