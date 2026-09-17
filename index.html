@@ -281,6 +281,9 @@ function genCourse(seed){
   const holeCell = idx(holeC + (W >> 1), holeR + (W >> 1));
 
   // --- reachability (BFS over playable cells) ---
+  // Water is NOT passable for routing purposes: rolling into it costs a stroke
+  // and sends the ball back, so a pond spanning a corridor is a dead end even
+  // though it isn't a wall. Every validation below routes around water.
   const reach = () => {
     const seen = new Uint8Array(COLS * ROWS);
     const q = [teeCell]; seen[teeCell] = 1;
@@ -291,7 +294,7 @@ function genCourse(seed){
       for (const [x, y] of nb){
         if (!inb(x, y)) continue;
         const n = idx(x, y);
-        if (seen[n] || tiles[n] === T_WALL) continue;
+        if (seen[n] || tiles[n] === T_WALL || tiles[n] === T_WATER) continue;
         seen[n] = 1; dist[n] = dist[cur] + 1; q.push(n);
       }
     }
@@ -419,10 +422,17 @@ function genCourse(seed){
     if (spot) stamp(spot, w, h, T_SAND);
   }
   // --- water hazards (later holes only, keeps hole 1-2 gentle) ---
+  // Placed speculatively: if a pond leaves no dry line to the cup it is
+  // removed, so you can always putt around the water rather than through it.
   if (seed % 3 !== 0){
     for (let i = 0, n = ri(0, 2); i < n; i++){
       const w = ri(2, 3), h = ri(2, 2), spot = freeSpot(w, h);
-      if (spot) stamp(spot, w, h, T_WATER);
+      if (!spot) continue;
+      const saved = [];
+      for (let y = spot.r; y < spot.r + h; y++)
+        for (let x = spot.c; x < spot.c + w; x++) saved.push([idx(x, y), tiles[idx(x, y)]]);
+      stamp(spot, w, h, T_WATER);
+      if (!reach().ok) for (const [k, v] of saved) tiles[k] = v;
     }
   }
   // --- boost pads (push along a cardinal direction) ---
