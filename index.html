@@ -203,8 +203,11 @@ const HOLE_R      = 13;
 const MAX_SPEED   = 1250;    // px/s at full power
 const MAX_DRAG    = 130;     // screen px for full power
 const REST        = 0.62;    // wall bounciness
+const BUMPER_REST = 0.95;    // rubber bumpers kick back harder than walls
+const BUMPER_R    = 15;
 const STOP_SPEED  = 9;
-const HOLE_CATCH  = 340;     // max speed to drop in
+const HOLE_CATCH  = 800;     // max speed to drop in (dead-centre; scaled down toward the rim)
+const HOLE_CENTER = 0.45;    // how much harder it is to sink off-centre
 const BOOST_ACC   = 1500;
 const SHOT_TIMEOUT= 14;      // seconds before force-stop
 const STROKE_LIMIT= 8;
@@ -321,17 +324,94 @@ function genCourse(seed){
       for (let x = spot.c; x < spot.c + w; x++) tiles[idx(x, y)] = type;
   };
 
-  // --- inner obstacles (walls inside the fairway) ---
-  const nObst = ri(1, 3);
-  for (let i = 0; i < nObst; i++){
-    const w = ri(1, 2), h = ri(1, 2);
-    const spot = freeSpot(w, h);
-    if (!spot) continue;
-    const saved = [];
-    for (let y = spot.r; y < spot.r + h; y++)
-      for (let x = spot.c; x < spot.c + w; x++){ saved.push([idx(x,y), tiles[idx(x,y)]]); tiles[idx(x,y)] = T_WALL; }
-    if (!reach().ok) for (const [k, v] of saved) tiles[k] = v;   // would seal the hole: undo
+  // --- inner obstacles -------------------------------------------------
+  // Every shape is applied speculatively and rolled back if it would seal
+  // the hole off, so the course always stays completable.
+  // Cells no obstacle may ever cover: the tee, the cup, and a ring around each.
+  // reach() seeds its BFS at the tee, so a shape sitting on the tee would still
+  // report "reachable" — this guard is what actually keeps the tee clear.
+  const guarded = new Set();
+  for (const base of [teeCell, holeCell]){
+    const gc = base % COLS, gr = (base / COLS) | 0;
+    for (let y = gr - 1; y <= gr + 1; y++)
+      for (let x = gc - 1; x <= gc + 1; x++)
+        if (inb(x, y)) guarded.add(idx(x, y));
   }
+
+  const tryShape = cells => {
+    if (!cells || !cells.length) return false;
+    const saved = [];
+    for (const k of cells){
+      if (k < 0 || k >= tiles.length) return false;
+      if (guarded.has(k)) return false;
+      saved.push([k, tiles[k]]);
+    }
+    for (const k of cells) tiles[k] = T_WALL;
+    if (reach().ok) return true;
+    for (const [k, v] of saved) tiles[k] = v;
+    return false;
+  };
+
+  // A gate: wall straight across the fairway leaving one narrow gap to aim through.
+  const makeGate = () => {
+    for (let tries = 0; tries < 40; tries++){
+      const p = playable[ri(0, playable.length - 1)];
+      const pc = p % COLS, pr = (p / COLS) | 0;
+      if (!far(p, teeCell, 4) || !far(p, holeCell, 4)) continue;
+      const horiz = rnd() < 0.5;
+      // walk out to both fairway edges
+      let a = horiz ? pc : pr, b = a;
+      const at = k => horiz ? tiles[idx(k, pr)] : tiles[idx(pc, k)];
+      const lim = horiz ? COLS : ROWS;
+      while (a - 1 >= 0 && at(a - 1) === T_GREEN) a--;
+      while (b + 1 < lim && at(b + 1) === T_GREEN) b++;
+      const span = b - a + 1;
+      if (span < 3 || span > 6) continue;              // only span a real corridor
+      // Leave a genuinely puttable gap — a single cell is only 40px for a 15px
+      // ball, which reads as a wall rather than a target.
+      const gapW = span >= 5 ? 2 : 1;
+      const gap = a + ri(0, span - gapW);
+      const cells = [];
+      for (let k = a; k <= b; k++){
+        if (k >= gap && k < gap + gapW) continue;
+        cells.push(horiz ? idx(k, pr) : idx(pc, k));
+      }
+      if (tryShape(cells)) return true;
+    }
+    return false;
+  };
+
+  // An L-shaped block — forces a bank shot rather than a straight roll-around.
+  const makeL = () => {
+    for (let tries = 0; tries < 40; tries++){
+      const spot = freeSpot(3, 3);
+      if (!spot) continue;
+      const { c: sc, r: sr } = spot;
+      const arm = ri(2, 3);
+      const cells = [];
+      const flipX = rnd() < 0.5, flipY = rnd() < 0.5;
+      for (let k = 0; k < arm; k++){
+        cells.push(idx(flipX ? sc + k : sc + 2 - k, sr));
+        cells.push(idx(flipX ? sc : sc + 2, flipY ? sr + k : sr + 2 - k));
+      }
+      if (tryShape([...new Set(cells)])) return true;
+    }
+    return false;
+  };
+
+  // A pair of pillars the ball has to thread or carom off.
+  const makePillars = () => {
+    for (let tries = 0; tries < 40; tries++){
+      const spot = freeSpot(4, 2);
+      if (!spot) continue;
+      const cells = [idx(spot.c, spot.r), idx(spot.c + 3, spot.r + 1)];
+      if (tryShape(cells)) return true;
+    }
+    return false;
+  };
+
+  const shapes = [makeGate, makeL, makePillars];
+  for (let i = 0, n = ri(1, 3); i < n; i++) shapes[ri(0, shapes.length - 1)]();
 
   // --- sand traps ---
   for (let i = 0, n = ri(1, 3); i < n; i++){
@@ -369,6 +449,31 @@ function genCourse(seed){
     }
   }
 
+  // --- rubber bumpers (circles, not grid cells) ---
+  // Only placed where the surrounding 3x3 is open fairway, so a bumper can
+  // never plug a corridor — it just deflects.
+  const bumpers = [];
+  for (let i = 0, n = ri(0, 3); i < n; i++){
+    for (let tries = 0; tries < 40; tries++){
+      const p = playable[ri(0, playable.length - 1)];
+      const pc = p % COLS, pr = (p / COLS) | 0;
+      if (!far(p, teeCell, 4) || !far(p, holeCell, 4)) continue;
+      // The 3x3 must be plain fairway. Portals especially: a teleport drops the
+      // ball at a cell centre, and if a bumper sat there it would land embedded.
+      let open = true;
+      for (let y = pr - 1; y <= pr + 1 && open; y++)
+        for (let x = pc - 1; x <= pc + 1 && open; x++){
+          const tt = inb(x, y) ? tiles[idx(x, y)] : T_WALL;
+          if (tt === T_WALL || tt === T_PORTAL || tt === T_WATER) open = false;
+        }
+      if (!open) continue;
+      const bx = (pc + 0.5) * CELL, by = (pr + 0.5) * CELL;
+      if (bumpers.some(m => Math.hypot(m.x - bx, m.y - by) < CELL * 2.2)) continue;
+      bumpers.push({ x: bx, y: by, r: BUMPER_R, hit: -1e9 });
+      break;
+    }
+  }
+
   // hazards can't strand the ball — if something broke, reroll the whole hole
   if (!reach().ok) return genCourse(seed + 977);
 
@@ -377,7 +482,7 @@ function genCourse(seed){
   const par = Math.max(2, Math.min(5, 1 + Math.round((d - 10) / 11)));
 
   return {
-    tiles, boost, portal, par,
+    tiles, boost, portal, par, bumpers,
     tee:  { x: (teeC  + W / 2) * CELL, y: (teeR  + W / 2) * CELL },
     hole: { x: (holeC + W / 2) * CELL, y: (holeR + W / 2) * CELL }
   };
@@ -502,6 +607,34 @@ function resolveWalls(b){
   }
 }
 
+// Rubber bumpers: circular, and bouncier than walls so they kick the ball hard.
+function resolveBumpers(b){
+  const list = G.course.bumpers;
+  for (let i = 0; i < list.length; i++){
+    const m = list[i];
+    const dx = b.x - m.x, dy = b.y - m.y;
+    const rr = m.r + BALL_R;
+    const d2 = dx * dx + dy * dy;
+    if (d2 >= rr * rr) continue;
+    let d, nx, ny;
+    if (d2 < 1e-9){
+      // dead centre (a wall can shove the ball onto the pin): eject backwards
+      const sp = Math.hypot(b.vx, b.vy) || 1;
+      d = 0; nx = -b.vx / sp; ny = -b.vy / sp;
+    } else {
+      d = Math.sqrt(d2); nx = dx / d; ny = dy / d;
+    }
+    b.x = m.x + nx * rr;
+    b.y = m.y + ny * rr;
+    const dot = b.vx * nx + b.vy * ny;
+    if (dot < 0){
+      b.vx -= (1 + BUMPER_REST) * dot * nx;
+      b.vy -= (1 + BUMPER_REST) * dot * ny;
+      m.hit = perfNow;               // for the flash effect when drawing
+    }
+  }
+}
+
 function stepBall(p, dt){
   const b = p.ball;
   if (!b.moving) return;
@@ -522,11 +655,11 @@ function stepBall(p, dt){
   }
 
   // gentle pull toward the cup so near-misses drop
-  const hd = Math.hypot(G.course.hole.x - b.x, G.course.hole.y - b.y);
-  if (hd < HOLE_R * 2.2 && hd > 0.01){
-    const a = 700 * (1 - hd / (HOLE_R * 2.2));
-    b.vx += (G.course.hole.x - b.x) / hd * a * dt;
-    b.vy += (G.course.hole.y - b.y) / hd * a * dt;
+  const hd0 = Math.hypot(G.course.hole.x - b.x, G.course.hole.y - b.y);
+  if (hd0 < HOLE_R * 3 && hd0 > 0.01){
+    const a = 900 * (1 - hd0 / (HOLE_R * 3));
+    b.vx += (G.course.hole.x - b.x) / hd0 * a * dt;
+    b.vy += (G.course.hole.y - b.y) / hd0 * a * dt;
   }
 
   // integrate in small substeps so fast shots can't tunnel through walls
@@ -535,7 +668,28 @@ function stepBall(p, dt){
   for (let s = 0; s < steps; s++){
     b.x += b.vx * dt / steps;
     b.y += b.vy * dt / steps;
+    // Two passes: resolving a wall can shove the ball into a bumper and vice
+    // versa, so a single pass can leave it embedded in the other one.
     resolveWalls(b);
+    resolveBumpers(b);
+    resolveWalls(b);
+    resolveBumpers(b);
+
+    // Cup test runs every substep against the ball's LIVE position — testing
+    // once per frame let fast putts step straight over the hole. The speed it
+    // will accept scales with how centred the ball is, so a putt through the
+    // middle drops while one clipping the rim has to be crawling.
+    const dx = G.course.hole.x - b.x, dy = G.course.hole.y - b.y;
+    const hd = Math.hypot(dx, dy);
+    if (hd < HOLE_R){
+      const limit = HOLE_CATCH * (1 - (hd / HOLE_R) * HOLE_CENTER);
+      if (Math.hypot(b.vx, b.vy) < limit){
+        b.moving = false; b.vx = b.vy = 0;
+        b.x = G.course.hole.x; b.y = G.course.hole.y;
+        p.sunk = true;
+        return;
+      }
+    }
   }
 
   if (b.portalCd > 0) b.portalCd -= dt;
@@ -550,14 +704,6 @@ function stepBall(p, dt){
       b.portalCd = 0.45;
       sfxPing();
     }
-  }
-
-  // cup
-  if (hd < HOLE_R && Math.hypot(b.vx, b.vy) < HOLE_CATCH){
-    b.moving = false; b.vx = b.vy = 0;
-    b.x = G.course.hole.x; b.y = G.course.hole.y;
-    p.sunk = true;
-    return;
   }
 
   // water
@@ -659,6 +805,20 @@ function draw(){
       }
       ctx.restore();
     }
+  }
+
+  // --- bumpers ---
+  for (const m of G.course.bumpers){
+    const since = (perfNow - m.hit) / 1000;
+    const pop = since < 0.25 ? (1 - since / 0.25) : 0;
+    ctx.fillStyle = 'rgba(0,0,0,.2)';
+    ctx.beginPath(); ctx.arc(m.x, m.y + 3, m.r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = pop > 0 ? '#ffffff' : '#e8554d';
+    ctx.beginPath(); ctx.arc(m.x, m.y, m.r + pop * 3, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(m.x, m.y, m.r + pop * 3, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.5)';
+    ctx.beginPath(); ctx.arc(m.x - m.r * 0.3, m.y - m.r * 0.32, m.r * 0.28, 0, Math.PI * 2); ctx.fill();
   }
 
   // --- tee marker ---
