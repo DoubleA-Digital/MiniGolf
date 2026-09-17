@@ -193,17 +193,25 @@
 /* ============================================================
    CONSTANTS
    ============================================================ */
-const COLS = 15, ROWS = 32, CELL = 40;
+// Wider and less tall than before: the old 15x32 grid produced thin twisty
+// corridors, where the reference game is built from broad open rooms.
+const COLS = 18, ROWS = 26, CELL = 40;
 const WORLD_W = COLS * CELL, WORLD_H = ROWS * CELL;
 
-const T_WALL = 0, T_GREEN = 1, T_SAND = 2, T_WATER = 3, T_BOOST = 4, T_PORTAL = 5;
+// T_ROUGH is the darker-green slow band; sand is kept but made rare, and
+// water is no longer generated at all (physics retained for the tile type).
+const T_WALL = 0, T_GREEN = 1, T_SAND = 2, T_WATER = 3, T_BOOST = 4,
+      T_PORTAL = 5, T_ROUGH = 6;
 
 const BALL_R      = 7.5;
 const HOLE_R      = 13;
-const MAX_SPEED   = 1250;    // px/s at full power
+// A full-power putt used to roll ~2765px against a ~960px hole, so the solver
+// could ace almost anything from the tee. Capped so crossing a whole hole in
+// one shot is a genuinely good shot rather than the default.
+const MAX_SPEED   = 950;     // px/s at full power
 const MAX_DRAG    = 130;     // screen px for full power
 const REST        = 0.62;    // wall bounciness
-const BUMPER_REST = 0.95;    // rubber bumpers kick back harder than walls
+const BUMPER_REST = 0.85;    // rubber bumpers kick back harder than walls
 const BUMPER_R    = 15;
 const STOP_SPEED  = 9;
 const HOLE_CATCH  = 800;     // max speed to drop in (dead-centre; scaled down toward the rim)
@@ -246,7 +254,7 @@ function genCourse(seed){
   const idx = (c, r) => r * COLS + c;
   const inb = (c, r) => c >= 0 && c < COLS && r >= 0 && r < ROWS;
 
-  const W = ri(3, 4);                                  // corridor width in cells
+  const W = ri(4, 5);                                  // corridor width in cells
   const carve = (c0, r0, c1, r1) => {
     for (let r = Math.max(0, r0); r <= Math.min(ROWS - 1, r1); r++)
       for (let c = Math.max(0, c0); c <= Math.min(COLS - 1, c1); c++)
@@ -265,6 +273,15 @@ function genCourse(seed){
     const nr = Math.max(1, r - vlen);
     carve(c, nr, c + W - 1, r + W - 1);
     r = nr;
+
+    // Open the fairway into a room every so often. These bulges are what make
+    // the hole read as a playfield with space to line up, rather than a pipe.
+    if (rnd() < 0.55){
+      const rw = ri(W + 1, W + 3), rh = ri(W, W + 2);
+      const rc = Math.max(1, Math.min(COLS - rw - 1, c - ri(0, 2)));
+      const rr = Math.max(1, Math.min(ROWS - rh - 1, r));
+      carve(rc, rr, rc + rw - 1, rr + rh - 1);
+    }
     if (r <= 1) break;
 
     // horizontal turn
@@ -355,86 +372,42 @@ function genCourse(seed){
     return false;
   };
 
-  // A gate: wall straight across the fairway leaving one narrow gap to aim through.
-  const makeGate = () => {
+  // Free-standing blocks sitting out in the open, the way the reference game
+  // does it. Requesting a spot two cells larger than the block guarantees a
+  // ring of fairway around it, so it reads as an island to play off rather
+  // than a wall growing out of the edge — and it can never pinch a corridor.
+  const makeBlock = (w, h) => {
     for (let tries = 0; tries < 40; tries++){
-      const p = playable[ri(0, playable.length - 1)];
-      const pc = p % COLS, pr = (p / COLS) | 0;
-      if (!far(p, teeCell, 4) || !far(p, holeCell, 4)) continue;
-      const horiz = rnd() < 0.5;
-      // walk out to both fairway edges
-      let a = horiz ? pc : pr, b = a;
-      const at = k => horiz ? tiles[idx(k, pr)] : tiles[idx(pc, k)];
-      const lim = horiz ? COLS : ROWS;
-      while (a - 1 >= 0 && at(a - 1) === T_GREEN) a--;
-      while (b + 1 < lim && at(b + 1) === T_GREEN) b++;
-      const span = b - a + 1;
-      if (span < 3 || span > 6) continue;              // only span a real corridor
-      // Leave a genuinely puttable gap — a single cell is only 40px for a 15px
-      // ball, which reads as a wall rather than a target.
-      const gapW = span >= 5 ? 2 : 1;
-      const gap = a + ri(0, span - gapW);
+      const spot = freeSpot(w + 2, h + 2);
+      if (!spot) continue;
       const cells = [];
-      for (let k = a; k <= b; k++){
-        if (k >= gap && k < gap + gapW) continue;
-        cells.push(horiz ? idx(k, pr) : idx(pc, k));
-      }
+      for (let y = spot.r + 1; y < spot.r + 1 + h; y++)
+        for (let x = spot.c + 1; x < spot.c + 1 + w; x++) cells.push(idx(x, y));
       if (tryShape(cells)) return true;
     }
     return false;
   };
 
-  // An L-shaped block — forces a bank shot rather than a straight roll-around.
-  const makeL = () => {
-    for (let tries = 0; tries < 40; tries++){
-      const spot = freeSpot(3, 3);
-      if (!spot) continue;
-      const { c: sc, r: sr } = spot;
-      const arm = ri(2, 3);
-      const cells = [];
-      const flipX = rnd() < 0.5, flipY = rnd() < 0.5;
-      for (let k = 0; k < arm; k++){
-        cells.push(idx(flipX ? sc + k : sc + 2 - k, sr));
-        cells.push(idx(flipX ? sc : sc + 2, flipY ? sr + k : sr + 2 - k));
-      }
-      if (tryShape([...new Set(cells)])) return true;
-    }
-    return false;
-  };
+  // Measured: blocks were the single biggest source of wasted strokes, so they
+  // stay few and mostly small — something to play around, not a pinball maze.
+  for (let i = 0, n = ri(2, 4); i < n; i++){
+    const big = rnd() < 0.15;
+    makeBlock(big ? 2 : 1, big ? 2 : 1);
+  }
 
-  // A pair of pillars the ball has to thread or carom off.
-  const makePillars = () => {
-    for (let tries = 0; tries < 40; tries++){
-      const spot = freeSpot(4, 2);
-      if (!spot) continue;
-      const cells = [idx(spot.c, spot.r), idx(spot.c + 3, spot.r + 1)];
-      if (tryShape(cells)) return true;
-    }
-    return false;
-  };
-
-  const shapes = [makeGate, makeL, makePillars];
-  for (let i = 0, n = ri(1, 3); i < n; i++) shapes[ri(0, shapes.length - 1)]();
-
-  // --- sand traps ---
-  for (let i = 0, n = ri(1, 3); i < n; i++){
-    const w = ri(2, 3), h = ri(2, 3), spot = freeSpot(w, h);
+  // --- rough: darker-green slow bands, the main texture hazard ---
+  for (let i = 0, n = ri(1, 2); i < n; i++){
+    const w = ri(3, 4), h = ri(1, 2), spot = freeSpot(w, h);
+    if (spot) stamp(spot, w, h, T_ROUGH);
+  }
+  // --- sand: kept for variety but small and occasional, not a dominant blob ---
+  if (rnd() < 0.4){
+    const w = ri(2, 3), h = 2, spot = freeSpot(w, h);
     if (spot) stamp(spot, w, h, T_SAND);
   }
-  // --- water hazards (later holes only, keeps hole 1-2 gentle) ---
-  // Placed speculatively: if a pond leaves no dry line to the cup it is
-  // removed, so you can always putt around the water rather than through it.
-  if (seed % 3 !== 0){
-    for (let i = 0, n = ri(0, 2); i < n; i++){
-      const w = ri(2, 3), h = ri(2, 2), spot = freeSpot(w, h);
-      if (!spot) continue;
-      const saved = [];
-      for (let y = spot.r; y < spot.r + h; y++)
-        for (let x = spot.c; x < spot.c + w; x++) saved.push([idx(x, y), tiles[idx(x, y)]]);
-      stamp(spot, w, h, T_WATER);
-      if (!reach().ok) for (const [k, v] of saved) tiles[k] = v;
-    }
-  }
+  // Water is intentionally not generated: it reads as a wall you cannot putt
+  // through, which is the opposite of the open feel these courses want.
+
   // --- boost pads (push along a cardinal direction) ---
   for (let i = 0, n = ri(0, 2); i < n; i++){
     const w = ri(2, 3), h = ri(1, 2), spot = freeSpot(w, h);
@@ -452,7 +425,10 @@ function genCourse(seed){
   if (rnd() < 0.55){
     const a = freeSpot(1, 1);
     const b = a ? freeSpot(1, 1) : null;
-    if (a && b && (Math.abs(a.r - b.r) + Math.abs(a.c - b.c)) > 8){
+    // Keep both ends well clear of the cup — a portal beside the hole can
+    // snatch a finishing putt and fling it back down the course.
+    if (a && b && (Math.abs(a.r - b.r) + Math.abs(a.c - b.c)) > 8 &&
+        far(idx(a.c, a.r), holeCell, 6) && far(idx(b.c, b.r), holeCell, 6)){
       const ia = idx(a.c, a.r), ib = idx(b.c, b.r);
       tiles[ia] = T_PORTAL; tiles[ib] = T_PORTAL;
       portal[ia] = ib; portal[ib] = ia;
@@ -463,7 +439,7 @@ function genCourse(seed){
   // Only placed where the surrounding 3x3 is open fairway, so a bumper can
   // never plug a corridor — it just deflects.
   const bumpers = [];
-  for (let i = 0, n = ri(0, 3); i < n; i++){
+  for (let i = 0, n = ri(0, 2); i < n; i++){
     for (let tries = 0; tries < 40; tries++){
       const p = playable[ri(0, playable.length - 1)];
       const pc = p % COLS, pr = (p / COLS) | 0;
@@ -484,15 +460,37 @@ function genCourse(seed){
     }
   }
 
+  // Wall cells with no connection to the outside are free-standing blocks, and
+  // get drawn as solid white islands rather than as holes cut in the fairway.
+  const island = new Uint8Array(COLS * ROWS);
+  {
+    const outside = new Uint8Array(COLS * ROWS);
+    const q = [];
+    const seedOut = k => { if (tiles[k] === T_WALL && !outside[k]){ outside[k] = 1; q.push(k); } };
+    for (let x = 0; x < COLS; x++){ seedOut(idx(x, 0)); seedOut(idx(x, ROWS - 1)); }
+    for (let y = 0; y < ROWS; y++){ seedOut(idx(0, y)); seedOut(idx(COLS - 1, y)); }
+    for (let h = 0; h < q.length; h++){
+      const cur = q[h], cc = cur % COLS, cr = (cur / COLS) | 0;
+      for (const [x, y] of [[cc+1,cr],[cc-1,cr],[cc,cr+1],[cc,cr-1]]){
+        if (!inb(x, y)) continue;
+        const n = idx(x, y);
+        if (outside[n] || tiles[n] !== T_WALL) continue;
+        outside[n] = 1; q.push(n);
+      }
+    }
+    for (let k = 0; k < tiles.length; k++)
+      if (tiles[k] === T_WALL && !outside[k]) island[k] = 1;
+  }
+
   // hazards can't strand the ball — if something broke, reroll the whole hole
   if (!reach().ok) return genCourse(seed + 977);
 
   // --- par from walking distance ---
   const d = reach().dist[holeCell];
-  const par = Math.max(2, Math.min(5, 1 + Math.round((d - 10) / 11)));
+  const par = Math.max(2, Math.min(5, 1 + Math.round((d - 6) / 8)));
 
   return {
-    tiles, boost, portal, par, bumpers,
+    tiles, boost, portal, par, bumpers, island,
     tee:  { x: (teeC  + W / 2) * CELL, y: (teeR  + W / 2) * CELL },
     hole: { x: (holeC + W / 2) * CELL, y: (holeR + W / 2) * CELL }
   };
@@ -552,7 +550,10 @@ function updateCamera(dt){
     cam.tz = fitZoom();
     cam.tx = WORLD_W / 2; cam.ty = WORLD_H / 2;
   } else {
-    cam.tz = playZoom();
+    // Ease out as the shot is pulled back, so a big swing shows more of the
+    // hole you're aiming into. Scales with power, not just with aiming.
+    const pull = G.aiming ? Math.min(1, Math.hypot(G.aim.x, G.aim.y) / MAX_DRAG) : 0;
+    cam.tz = playZoom() * (1 - 0.24 * pull);
     const b = focusBall();
     cam.tx = b.x; cam.ty = b.y;
     // keep the camera inside the world when the view is smaller than the course
@@ -653,7 +654,10 @@ function stepBall(p, dt){
 
   // surface friction
   let fric = 0.9925;
-  if (t === T_SAND) fric = 0.90;
+  // Per-second speed retained: green ~64%, rough ~40%, sand ~6%. Rough used to
+  // keep ~10%, which stalled a ball that came to rest inside it shot after shot.
+  if (t === T_ROUGH) fric = 0.985;
+  if (t === T_SAND)  fric = 0.955;
   b.vx *= Math.pow(fric, dt * 60);
   b.vy *= Math.pow(fric, dt * 60);
 
@@ -749,9 +753,10 @@ function draw(){
       const t = tiles[r * COLS + c];
       if (t === T_WALL) continue;
       const x = c * CELL, y = r * CELL;
-      ctx.fillStyle = t === T_SAND  ? '#e5d7a6'
+      ctx.fillStyle = t === T_SAND  ? '#ddd0a4'
                     : t === T_WATER ? '#3f9fdc'
-                    : t === T_BOOST ? '#63cf67'
+                    : t === T_ROUGH ? '#369b3d'
+                    : t === T_BOOST ? '#5cc763'
                     : '#43b14b';
       ctx.fillRect(x, y, CELL + 0.6, CELL + 0.6);
     }
@@ -765,8 +770,8 @@ function draw(){
       const dx = G.course.boost[i], dy = G.course.boost[i + 1];
       const x = c * CELL + CELL / 2, y = r * CELL + CELL / 2;
       ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
-      ctx.fillStyle = 'rgba(255,255,255,.55)';
-      ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(8, 4); ctx.lineTo(-8, 4); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.38)';
+      ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(6, 3); ctx.lineTo(-6, 3); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
   }
@@ -814,6 +819,31 @@ function draw(){
         ctx.beginPath(); ctx.moveTo(-3, -7); ctx.lineTo(0, -11); ctx.lineTo(3, -7); ctx.stroke();
       }
       ctx.restore();
+    }
+  }
+
+  // --- free-standing blocks, drawn solid white like the reference game ---
+  ctx.fillStyle = '#ffffff';
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      if (!G.course.island[r * COLS + c]) continue;
+      const x = c * CELL, y = r * CELL;
+      // only round the corners that aren't shared with another island cell
+      const up = G.course.island[(r - 1) * COLS + c], dn = G.course.island[(r + 1) * COLS + c];
+      const lf = c > 0 && G.course.island[r * COLS + c - 1];
+      const rt = c < COLS - 1 && G.course.island[r * COLS + c + 1];
+      const rad = 4;
+      ctx.beginPath();
+      ctx.moveTo(x + (lf || up ? 0 : rad), y);
+      ctx.lineTo(x + CELL - (rt || up ? 0 : rad), y);
+      if (!rt && !up) ctx.quadraticCurveTo(x + CELL, y, x + CELL, y + rad);
+      ctx.lineTo(x + CELL, y + CELL - (rt || dn ? 0 : rad));
+      if (!rt && !dn) ctx.quadraticCurveTo(x + CELL, y + CELL, x + CELL - rad, y + CELL);
+      ctx.lineTo(x + (lf || dn ? 0 : rad), y + CELL);
+      if (!lf && !dn) ctx.quadraticCurveTo(x, y + CELL, x, y + CELL - rad);
+      ctx.lineTo(x, y + (lf || up ? 0 : rad));
+      if (!lf && !up) ctx.quadraticCurveTo(x, y, x + rad, y);
+      ctx.closePath(); ctx.fill();
     }
   }
 
