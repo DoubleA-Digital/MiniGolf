@@ -4,20 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Mini Golf</title>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<meta name="description" content="Nine generated mini golf holes that build from gentle to brutal. Play a friend on another device with a 4-letter room code — no server, no account.">
+<meta name="theme-color" content="#2b8438">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M40 10v34' stroke='%23fff' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M40 10l17 5.5L40 21z' fill='%23ff4d4d'/%3E%3Ccircle cx='22' cy='44' r='9' fill='%23fff'/%3E%3C/svg%3E">
+<meta property="og:title" content="Mini Golf">
+<meta property="og:description" content="Nine generated holes, easy to hard. Two players, one room code, no server.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://doublea-digital.github.io/MiniGolf/">
+<meta name="twitter:card" content="summary">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
 <style>
   :root{
     --bg:#d7d4ce;
-    --green:#43b14b;
-    --green-lt:#63cf67;
-    --green-dk:#2f9a3a;
-    --sand:#e5d7a6;
-    --water:#3f9fdc;
-    --wall:#ffffff;
     --ink:#1d2320;
-    --p1:#ffffff;
-    --p2:#ff5d5d;
-    --panel:#15181c;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
@@ -254,9 +253,10 @@
 const COLS = 18, ROWS = 26, CELL = 40;
 const WORLD_W = COLS * CELL, WORLD_H = ROWS * CELL;
 
-// T_ROUGH is the darker-green slow band; sand is kept but made rare, and
-// water is no longer generated at all (physics retained for the tile type).
-const T_WALL = 0, T_GREEN = 1, T_SAND = 2, T_WATER = 3, T_BOOST = 4,
+// T_ROUGH is the darker-green slow band; sand is kept but rare. Value 3 was
+// water, removed once ponds stopped being generated — the remaining values keep
+// their original numbers so previously generated courses still decode.
+const T_WALL = 0, T_GREEN = 1, T_SAND = 2, T_BOOST = 4,
       T_PORTAL = 5, T_ROUGH = 6;
 
 const BALL_R      = 7.5;
@@ -369,9 +369,6 @@ function genCourse(seed, diff){
   const holeCell = idx(holeC + (W >> 1), holeR + (W >> 1));
 
   // --- reachability (BFS over playable cells) ---
-  // Water is NOT passable for routing purposes: rolling into it costs a stroke
-  // and sends the ball back, so a pond spanning a corridor is a dead end even
-  // though it isn't a wall. Every validation below routes around water.
   const reach = () => {
     const seen = new Uint8Array(COLS * ROWS);
     const q = [teeCell]; seen[teeCell] = 1;
@@ -382,7 +379,7 @@ function genCourse(seed, diff){
       for (const [x, y] of nb){
         if (!inb(x, y)) continue;
         const n = idx(x, y);
-        if (seen[n] || tiles[n] === T_WALL || tiles[n] === T_WATER) continue;
+        if (seen[n] || tiles[n] === T_WALL) continue;
         seen[n] = 1; dist[n] = dist[cur] + 1; q.push(n);
       }
     }
@@ -459,41 +456,12 @@ function genCourse(seed, diff){
     return false;
   };
 
-  // A gate walls across the fairway leaving a puttable gap. Reserved for the
-  // hard end of the course — it is the single most demanding obstacle here.
-  const makeGate = () => {
-    for (let tries = 0; tries < 40; tries++){
-      const p = playable[ri(0, playable.length - 1)];
-      const pc = p % COLS, pr = (p / COLS) | 0;
-      if (!far(p, teeCell, 5) || !far(p, holeCell, 5)) continue;
-      const horiz = rnd() < 0.5;
-      let a = horiz ? pc : pr, b = a;
-      const at = k => horiz ? tiles[idx(k, pr)] : tiles[idx(pc, k)];
-      const lim = horiz ? COLS : ROWS;
-      while (a - 1 >= 0 && at(a - 1) === T_GREEN) a--;
-      while (b + 1 < lim && at(b + 1) === T_GREEN) b++;
-      const span = b - a + 1;
-      if (span < 4 || span > 7) continue;
-      const gapW = 2;                       // never thinner than 80px
-      const gap = a + ri(0, span - gapW);
-      const cells = [];
-      for (let k = a; k <= b; k++){
-        if (k >= gap && k < gap + gapW) continue;
-        cells.push(horiz ? idx(k, pr) : idx(pc, k));
-      }
-      if (tryShape(cells)) return true;
-    }
-    return false;
-  };
-
   // Blocks were measured as the biggest source of wasted strokes, so their
   // count is what most of the difficulty ramp rides on.
   for (let i = 0, n = Math.round(lerp(1.0, 2.8)); i < n; i++){
     const big = rnd() < lerp(0.08, 0.34);
     makeBlock(big ? 2 : 1, big ? 2 : 1);
   }
-  // Gates measured as the single worst stroke-sink, so they stay retired.
-  void makeGate;
 
   // --- rough: darker-green slow bands, the main texture hazard ---
   for (let i = 0, n = Math.round(lerp(0.6, 2.4)); i < n; i++){
@@ -505,9 +473,6 @@ function genCourse(seed, diff){
     const w = ri(2, 3), h = 2, spot = freeSpot(w, h);
     if (spot) stamp(spot, w, h, T_SAND);
   }
-  // Water is intentionally not generated: it reads as a wall you cannot putt
-  // through, which is the opposite of the open feel these courses want.
-
   // --- boost pads (push along a cardinal direction) ---
   for (let i = 0, n = ri(0, diff > 0.5 ? 2 : 1); i < n; i++){
     const w = ri(2, 3), h = ri(1, 2), spot = freeSpot(w, h);
@@ -550,7 +515,7 @@ function genCourse(seed, diff){
       for (let y = pr - 1; y <= pr + 1 && open; y++)
         for (let x = pc - 1; x <= pc + 1 && open; x++){
           const tt = inb(x, y) ? tiles[idx(x, y)] : T_WALL;
-          if (tt === T_WALL || tt === T_PORTAL || tt === T_WATER) open = false;
+          if (tt === T_WALL || tt === T_PORTAL) open = false;
         }
       if (!open) continue;
       const bx = (pc + 0.5) * CELL, by = (pr + 0.5) * CELL;
@@ -604,7 +569,6 @@ function genCourse(seed, diff){
 const G = {
   mode: 'menu',          // menu | play
   online: false,
-  isHost: false,
   seed: 0,
   hole: 0,
   course: null,
@@ -619,8 +583,8 @@ const G = {
   viewLock: 0            // seconds of forced overview at hole start
 };
 
-function newPlayer(name, color){
-  return { name, color, scores: new Array(HOLES).fill(null), strokes: 0,
+function newPlayer(name){
+  return { name, scores: new Array(HOLES).fill(null), strokes: 0,
            holed: false, ball: { x: 0, y: 0, vx: 0, vy: 0, moving: false, portalCd: 0 },
            lastRest: { x: 0, y: 0 } };
 }
@@ -675,8 +639,6 @@ function focusBall(){
   const p = G.players[G.turn];
   return p ? p.ball : { x: WORLD_W / 2, y: WORLD_H / 2 };
 }
-const w2s = (x, y) => ({ x: (x - cam.x) * cam.zoom + VW / 2, y: (y - cam.y) * cam.zoom + VH / 2 });
-const s2w = (x, y) => ({ x: (x - VW / 2) / cam.zoom + cam.x, y: (y - VH / 2) / cam.zoom + cam.y });
 
 /* ============================================================
    PHYSICS
@@ -830,13 +792,6 @@ function stepBall(p, dt){
     }
   }
 
-  // water
-  if (t === T_WATER){
-    b.moving = false; b.vx = b.vy = 0;
-    p.splashed = true;
-    return;
-  }
-
   if (Math.hypot(b.vx, b.vy) < STOP_SPEED){
     b.moving = false; b.vx = b.vy = 0;
   }
@@ -884,7 +839,6 @@ function buildStatic(){
       const x = c * CELL, y = r * CELL;
       const stripe = ((r >> 1) & 1) === 0;
       g.fillStyle = t === T_SAND  ? '#e2d3a2'
-                  : t === T_WATER ? '#3f9fdc'
                   : t === T_ROUGH ? (stripe ? '#39963f' : '#358f3b')
                   : t === T_BOOST ? (stripe ? '#63c96a' : '#5cc263')
                   : (stripe ? '#4fb257' : '#49ab51');
@@ -1227,7 +1181,7 @@ function takeShot(ang, pow, broadcast){
   if (!p || p.holed) return;
   p.strokes++;
   p.lastRest = { x: p.ball.x, y: p.ball.y };
-  p.sunk = false; p.splashed = false;
+  p.sunk = false;
   p.ball.vx = Math.cos(ang) * pow * MAX_SPEED;
   p.ball.vy = Math.sin(ang) * pow * MAX_SPEED;
   p.ball.moving = true;
@@ -1242,12 +1196,6 @@ function shotSettled(){
   const p = G.players[G.turn];
   if (!p){ G.busy = false; return; }
 
-  if (p.splashed){
-    p.strokes++;                                  // water penalty
-    p.ball.x = p.lastRest.x; p.ball.y = p.lastRest.y;
-    p.splashed = false;
-    flash('Water!', '+1 stroke');
-  }
   if (p.sunk){
     p.holed = true;
     p.scores[G.hole] = p.strokes;
@@ -1297,7 +1245,7 @@ function loadHole(){
   parCache[G.hole] = G.course.par;
   buildStatic();
   G.players.forEach(p => {
-    p.strokes = 0; p.holed = false; p.sunk = false; p.splashed = false;
+    p.strokes = 0; p.holed = false; p.sunk = false;
     p.ball.x = G.course.tee.x + (p === G.players[1] ? 9 : -9);
     p.ball.y = G.course.tee.y;
     p.ball.vx = p.ball.vy = 0; p.ball.moving = false; p.ball.portalCd = 0;
@@ -1611,8 +1559,8 @@ function beginGame(myIndex, otherName){
   G.mode = 'play';
   G.me = myIndex;
   G.players = myIndex === 0
-    ? [newPlayer('You', '#fff'), newPlayer(otherName || 'Rival', '#ff5d5d')]
-    : [newPlayer(otherName || 'Host', '#fff'), newPlayer('You', '#ff5d5d')];
+    ? [newPlayer('You'), newPlayer(otherName || 'Rival')]
+    : [newPlayer(otherName || 'Host'), newPlayer('You')];
   G.hole = 0;
   show(null);
   hud.style.display = 'block';
@@ -1628,7 +1576,7 @@ function startAsHost(){
 
 // --- menu buttons ---
 document.getElementById('bHost').onclick = async () => {
-  G.online = true; G.isHost = true;
+  G.online = true;
   const code = randCode();
   document.getElementById('hostCode').textContent = code;
   document.getElementById('hostMsg').textContent = 'Share this code. Waiting for your opponent…';
@@ -1648,7 +1596,7 @@ document.getElementById('bJoin').onclick = async () => {
   const code = document.getElementById('joinCode').value.trim().toUpperCase();
   const err = document.getElementById('joinErr');
   if (code.length !== 4){ err.textContent = 'Enter the 4-character code.'; return; }
-  G.online = true; G.isHost = false;
+  G.online = true;
   err.textContent = 'Connecting…';
   document.getElementById('bJoin').disabled = true;
   try{
@@ -1669,7 +1617,7 @@ document.getElementById('bSolo').onclick = () => {
   G.seed = (Math.random() * 1e9) | 0;
   G.mode = 'play';
   G.me = 0;
-  G.players = [newPlayer('You', '#fff')];
+  G.players = [newPlayer('You')];
   G.hole = 0;
   show(null);
   hud.style.display = 'block';
