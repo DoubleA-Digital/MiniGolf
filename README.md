@@ -1,7 +1,8 @@
 # Mini Golf
 
 Nine procedurally generated mini golf holes that build from gentle to brutal.
-Two players, one 4-letter room code, no backend.
+Tournaments for any number of players, one 4-letter room code, everyone putts
+at once. Profiles, cosmetic balls and points are backed by Supabase.
 
 **Play:** https://doublea-digital.github.io/MiniGolf/
 
@@ -13,11 +14,19 @@ Everything is one `index.html` — no build step, no framework, no server.
 PeerJS handles the peer-to-peer link (same approach as
 [Felt](https://github.com/DoubleA-Digital/Felt)).
 
-**Multiplayer.** One player creates a room and shares the code; the other
-joins. Both sides generate identical courses from a shared seed and simulate
-every shot locally, so only the shot itself needs to cross the wire. After the
-ball settles the shooter broadcasts its exact resting position, which means the
-two views cannot drift apart even if the simulations diverge.
+**Multiplayer.** The host opens a room and shares the code; everyone else
+joins and appears in the lobby. Connections form a star: guests talk to the
+host, and the host relays each message on to the rest. Every client generates
+identical courses from a shared seed and simulates all balls locally, so only
+the shot crosses the wire. The owner of a ball is the only authority on where
+it stopped and what it scored, and broadcasts that when it settles — the other
+clients snap to it rather than trusting their own replay.
+
+Players putt **simultaneously** rather than in turn, which is what makes a
+large field playable; the only thing gating your shot is your own ball being at
+rest. The host decides when a hole is over and tells everyone to advance, so a
+client that is mid-replay (or backgrounded, where the browser pauses its
+animation) still moves on with the group.
 
 **Course generation.** A corridor is carved from tee to cup with random turns
 and occasional room bulges, then obstacles and hazards are stamped in. Every
@@ -35,6 +44,34 @@ finish. Par accounts for route length, clutter and tier.
 offscreen canvas, so per-frame work is limited to the things that actually
 animate. That is what pays for the drop shadows, mown stripes and surface
 texture.
+
+## Profiles, points and cosmetics
+
+Profiles live in Supabase (project `esogrnjilzxcmvgpieib`). `mg_profiles` is
+RLS-locked with **no policies at all** — anon can neither read nor write it
+directly. Everything goes through `SECURITY DEFINER` functions that check a
+per-profile token and clamp the inputs:
+
+| Function | Purpose |
+| --- | --- |
+| `mg_create_profile` | First run; stores a SHA-256 of the client's token |
+| `mg_get_profile` | Reads your own row, token required |
+| `mg_save_profile` | Name, avatar, uploaded picture, equipped ball |
+| `mg_unlock_ball` | Spends points; refuses if you cannot afford it |
+| `mg_award_points` | End of tournament; clamped to 400 per call |
+| `mg_leaderboard` | Public top 25 |
+
+Points: **25 for taking part, up to 100 for placement, 8 per hole under par.**
+The ball catalogue (`mg_balls`) is the server-side authority on cost, so the
+client cannot grant itself a ball by editing prices. Points are still *reported*
+by the client, which a determined player could inflate — acceptable for a
+friends' game, and the reason every award is clamped.
+
+Uploaded profile pictures are cropped square and scaled to 96px JPEG before
+being stored, keeping a row a few KB rather than a few MB.
+
+The identity lives in `localStorage`, so clearing site data starts a new
+profile. The leaderboard is shared; the identity is not portable across devices.
 
 ## Tuning
 
@@ -68,5 +105,9 @@ Open it in two browsers (or a phone on the same Wi-Fi) to test multiplayer.
 
 - PeerJS uses a public signalling broker. Fine for a game with a friend; not
   something to depend on for real traffic.
-- Rooms are two players; a third connection is refused.
-- There is no reconnect. If a peer drops, the game returns to the menu.
+- Joining is closed once the host starts; there is no late join.
+- There is no reconnect. If a guest drops they are marked out for the round;
+  if the host drops, the room ends.
+- Every message is relayed by the host, so the host's connection is the
+  bottleneck for a very large field.
+- Points are client-reported and clamped server-side, not verified.

@@ -22,25 +22,12 @@
   html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
     color:var(--ink);user-select:none;-webkit-user-select:none}
-  canvas{display:block;position:fixed;inset:0;touch-action:none}
+  /* scoped to the game canvas — a bare `canvas` selector also caught the
+     ball previews in the shop and pinned them to the corner of the screen */
+  #cv{display:block;position:fixed;inset:0;touch-action:none}
 
   /* ---------- HUD ---------- */
   #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
-  .chip{position:absolute;top:calc(12px + env(safe-area-inset-top));display:flex;align-items:center;gap:8px}
-  .chip.left{left:12px}
-  .chip.right{right:12px;flex-direction:row-reverse}
-  .av{width:46px;height:46px;border-radius:50%;background:#fff;border:3px solid #fff;
-      box-shadow:0 2px 8px rgba(0,0,0,.25);display:grid;place-items:center;font-size:22px;overflow:hidden}
-  .av.p1{background:#ffd8ec}
-  .av.p2{background:#f6e0c8}
-  .strokes{min-width:34px;height:34px;padding:0 8px;border-radius:17px;background:#5b6167;color:#fff;
-      display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:15px;
-      box-shadow:0 2px 6px rgba(0,0,0,.25)}
-  .strokes.active{background:#fff;color:#1d2320}
-  .strokes svg{width:13px;height:13px}
-  .nametag{position:absolute;top:62px;font-size:12px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5)}
-  .nametag.left{left:14px}
-  .nametag.right{right:14px}
 
   #holeinfo{position:absolute;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
     background:rgba(18,26,20,.72);color:#fff;border-radius:16px;padding:8px 16px 9px;text-align:center;
@@ -135,6 +122,98 @@
     border-radius:50%;animation:sp .8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
 
+  /* ---------- in-game roster ---------- */
+  #roster{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;
+    display:flex;flex-direction:column;gap:4px;max-height:52vh;overflow:hidden;pointer-events:none}
+  .rrow{display:flex;align-items:center;gap:7px;background:rgba(18,26,20,.68);
+    border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:3px 10px 3px 3px;
+    backdrop-filter:blur(8px);max-width:190px}
+  .rrow.me{background:rgba(255,255,255,.92);border-color:#fff}
+  .rrow.me .rname,.rrow.me .rstr{color:#16301b}
+  .rrow.done{opacity:.72}
+  .rrow.out{opacity:.4;text-decoration:line-through}
+  .rav{width:26px;height:26px;border-radius:50%;overflow:hidden;background:#fff;flex:0 0 auto;
+    display:grid;place-items:center;font-size:15px;line-height:1}
+  .rav img{width:100%;height:100%;object-fit:cover;display:block}
+  .rav svg{width:100%;height:100%}
+  .rname{color:#fff;font-size:12.5px;font-weight:800;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:104px}
+  .rstr{color:#fff;font-size:12.5px;font-weight:900;margin-left:auto;font-variant-numeric:tabular-nums}
+
+  /* ---------- menu chip ---------- */
+  .mechip{position:absolute;top:calc(14px + env(safe-area-inset-top));left:14px;
+    display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:5px 14px 5px 5px;
+    backdrop-filter:blur(6px)}
+  .meav{width:32px;height:32px;border-radius:50%;overflow:hidden;background:#fff;
+    display:grid;place-items:center;font-size:18px}
+  .meav img{width:100%;height:100%;object-fit:cover;display:block}
+  .meav svg{width:100%;height:100%}
+  .meinfo{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15}
+  .meinfo b{font-size:13px;font-weight:900}
+  .meinfo span{font-size:10.5px;opacity:.8;font-weight:700}
+  .minirow{display:flex;gap:10px}
+  .btn.mini{min-width:112px;font-size:14px;padding:12px 16px}
+
+  /* ---------- lobby ---------- */
+  .lobby{width:100%;max-width:300px;background:rgba(0,0,0,.18);border-radius:16px;
+    border:1px solid rgba(255,255,255,.12);padding:10px;max-height:34vh;overflow:auto}
+  .lobbyhead{font-size:10.5px;font-weight:900;letter-spacing:1px;opacity:.7;margin-bottom:7px}
+  .lrow{display:flex;align-items:center;gap:9px;padding:5px 3px}
+  .lav{width:28px;height:28px;border-radius:50%;overflow:hidden;background:#fff;flex:0 0 auto;
+    display:grid;place-items:center;font-size:16px}
+  .lav img{width:100%;height:100%;object-fit:cover;display:block}
+  .lav svg{width:100%;height:100%}
+  .lname{font-size:13.5px;font-weight:800;text-align:left}
+  .lname em{opacity:.6;font-style:normal;font-size:11px;font-weight:700}
+  .lhost{margin-left:auto;font-size:9px;font-weight:900;letter-spacing:.8px;
+    background:rgba(255,255,255,.2);padding:3px 7px;border-radius:999px}
+
+  /* ---------- settings ---------- */
+  .panel{width:100%;max-width:340px;background:rgba(0,0,0,.2);border-radius:18px;
+    border:1px solid rgba(255,255,255,.12);padding:14px;text-align:left;
+    max-height:60vh;overflow:auto;pointer-events:auto}
+  .lbl{display:flex;align-items:center;font-size:10.5px;font-weight:900;letter-spacing:1px;
+    opacity:.75;margin:12px 0 7px}
+  .lbl:first-child{margin-top:0}
+  .pts{margin-left:auto;background:#ffd23d;color:#3a2a00;border-radius:999px;
+    padding:2px 9px;font-size:10.5px;letter-spacing:.4px}
+  .field.wide{width:100%;letter-spacing:0;text-transform:none;text-align:left;font-size:16px}
+  .avrow{display:flex;align-items:center;gap:12px}
+  .avbig{width:62px;height:62px;border-radius:50%;overflow:hidden;background:#fff;
+    display:grid;place-items:center;font-size:34px;flex:0 0 auto}
+  .avbig img{width:100%;height:100%;object-fit:cover;display:block}
+  .avbig svg{width:100%;height:100%}
+  .upload{cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+  .avgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:10px}
+  .avopt{aspect-ratio:1;border-radius:50%;border:2px solid transparent;background:rgba(255,255,255,.14);
+    display:grid;place-items:center;font-size:17px;cursor:pointer;padding:0;overflow:hidden}
+  .avopt svg{width:76%;height:76%}
+  .avopt.on{border-color:#ffd23d;background:rgba(255,210,61,.22)}
+  .ballgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .ballcard{background:rgba(255,255,255,.1);border:2px solid transparent;border-radius:14px;
+    padding:8px 4px 9px;text-align:center;cursor:pointer}
+  .ballcard canvas{width:56px;height:56px;display:block;margin:0 auto}
+  .ballcard b{display:block;font-size:11.5px;font-weight:900;margin-top:2px}
+  .ballcard span{display:block;font-size:9.5px;opacity:.75;font-weight:700}
+  .ballcard.on{border-color:#ffd23d;background:rgba(255,210,61,.18)}
+  .ballcard.locked{opacity:.85}
+
+  /* ---------- leaderboard ---------- */
+  .brow{display:flex;align-items:center;gap:9px;padding:7px 4px;
+    border-bottom:1px solid rgba(255,255,255,.08)}
+  .brow.mine{background:rgba(255,210,61,.14);border-radius:10px}
+  .brank{width:22px;font-size:12px;font-weight:900;opacity:.7;text-align:right}
+  .bav{width:28px;height:28px;border-radius:50%;overflow:hidden;background:#fff;flex:0 0 auto;
+    display:grid;place-items:center;font-size:15px}
+  .bav img{width:100%;height:100%;object-fit:cover;display:block}
+  .bav svg{width:100%;height:100%}
+  .bname{font-size:13px;font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bsub{font-size:10px;opacity:.65;font-weight:700}
+  .bpts{font-size:13px;font-weight:900;min-width:44px;text-align:right}
+  .bmsg{padding:16px;text-align:center;font-size:13px;opacity:.8}
+  tbody tr.mine td{background:rgba(255,210,61,.16)}
+
   /* ---------- Scorecard ---------- */
   #card{position:fixed;inset:0;z-index:30;background:rgba(10,14,12,.86);display:flex;
     align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px)}
@@ -164,17 +243,7 @@
 
 <!-- ================= HUD ================= -->
 <div id="hud" style="display:none">
-  <div class="chip left">
-    <div class="av p1" id="av0">🙂</div>
-    <div class="strokes" id="st0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 3v13"/><path d="M9 16c-3 0-5 2-5 4"/><path d="M9 6l6 3-6 3"/></svg><span>0</span></div>
-  </div>
-  <div class="nametag left" id="nm0">You</div>
-
-  <div class="chip right">
-    <div class="av p2" id="av1">😀</div>
-    <div class="strokes" id="st1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 3v13"/><path d="M9 16c-3 0-5 2-5 4"/><path d="M9 6l6 3-6 3"/></svg><span>0</span></div>
-  </div>
-  <div class="nametag right" id="nm1">Rival</div>
+  <div id="roster"></div>
 
   <div id="holeinfo">
     <div class="hi-top"><b id="hiHole">HOLE 1</b><span class="tier" id="hiTier">EASY</span></div>
@@ -197,6 +266,7 @@
 
 <!-- ================= MENU ================= -->
 <div class="screen" id="scMenu">
+  <div id="meChip" class="mechip"></div>
   <svg class="logo" viewBox="0 0 64 64" fill="none">
     <ellipse cx="32" cy="55" rx="20" ry="5" fill="rgba(0,0,0,.18)"/>
     <path d="M40 10v34" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>
@@ -205,19 +275,27 @@
     <circle cx="19.4" cy="41.4" r="2.4" fill="rgba(0,0,0,.08)"/>
   </svg>
   <h1>MINI GOLF</h1>
-  <div class="tagline"><span>9 HOLES</span><span>EASY → HARD</span><span>2 PLAYERS</span></div>
-  <p>Nine generated holes that build from gentle to brutal. Lowest total wins.</p>
-  <button class="btn" id="bHost">Create Game</button>
+  <div class="tagline"><span>9 HOLES</span><span>EASY → HARD</span><span>TOURNAMENTS</span></div>
+  <p>Nine generated holes that build from gentle to brutal. Everyone putts at once. Place well to earn points.</p>
+  <button class="btn" id="bHost">Host Tournament</button>
   <button class="btn alt" id="bJoinScreen">Join Game</button>
   <button class="btn alt" id="bSolo">Solo Practice</button>
+  <div class="minirow">
+    <button class="btn mini" id="bSettings">Settings</button>
+    <button class="btn mini" id="bBoard">Leaderboard</button>
+  </div>
 </div>
 
 <!-- ================= HOST LOBBY ================= -->
 <div class="screen hide" id="scHost">
   <h1>Room Code</h1>
   <div class="code" id="hostCode">----</div>
-  <p id="hostMsg">Share this code. Waiting for your opponent…</p>
-  <div class="spin" id="hostSpin"></div>
+  <p id="hostMsg">Share this code. Anyone with it can join.</p>
+  <div class="lobby">
+    <div class="lobbyhead"><span id="lobbyCount">1 player</span></div>
+    <div id="lobbyList"></div>
+  </div>
+  <button class="btn" id="bStart">Start Tournament</button>
   <button class="btn alt" id="bHostBack">Back</button>
 </div>
 
@@ -228,6 +306,35 @@
   <div class="err" id="joinErr"></div>
   <button class="btn" id="bJoin">Join</button>
   <button class="btn alt" id="bJoinBack">Back</button>
+</div>
+
+<!-- ================= SETTINGS ================= -->
+<div class="screen hide" id="scSettings">
+  <h1>Settings</h1>
+  <div class="panel">
+    <label class="lbl">Display name</label>
+    <input class="field wide" id="setName" maxlength="16" autocomplete="off" spellcheck="false">
+
+    <label class="lbl">Profile picture</label>
+    <div class="avrow">
+      <div class="avbig" id="avCurrent"></div>
+      <label class="btn mini upload">Upload
+        <input type="file" id="avUpload" accept="image/*" hidden>
+      </label>
+    </div>
+    <div class="avgrid" id="avGrid"></div>
+
+    <label class="lbl">Golf balls <span class="pts" id="setPoints">0 pts</span></label>
+    <div class="ballgrid" id="ballGrid"></div>
+  </div>
+  <button class="btn alt" id="bSetBack">Back</button>
+</div>
+
+<!-- ================= LEADERBOARD ================= -->
+<div class="screen hide" id="scBoard">
+  <h1>Leaderboard</h1>
+  <div class="panel" id="boardList"></div>
+  <button class="btn alt" id="bBoardBack">Back</button>
 </div>
 
 <!-- ================= SCORECARD ================= -->
@@ -291,6 +398,111 @@ const tierOf = d => d < 0.34 ? 'EASY' : d < 0.68 ? 'MEDIUM' : 'HARD';
 
 const SCORE_NAMES = {'-4':'Condor','-3':'Albatross','-2':'Eagle','-1':'Birdie','0':'Par',
                      '1':'Bogey','2':'Double Bogey','3':'Triple Bogey'};
+
+/* ============================================================
+   PROFILE + POINTS  (Supabase; publishable key is safe to ship —
+   mg_profiles is RLS-locked and reachable only through the RPCs)
+   ============================================================ */
+const SUPA_URL = 'https://esogrnjilzxcmvgpieib.supabase.co';
+const SUPA_KEY = 'sb_publishable__QUefxDt7tRi9Y943QK7yw_ivbRt71u';
+
+async function rpc(fn, args, timeoutMs){
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs || 9000);
+  try{
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST', signal: ac.signal,
+      headers: { 'apikey': SUPA_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args || {})
+    });
+    if (!r.ok) throw new Error(fn + ' ' + r.status);
+    return await r.json();
+  } finally { clearTimeout(timer); }
+}
+
+// Cosmetic balls. Costs are mirrored from the server, which is the authority —
+// these are only used to render the shop before the catalogue loads.
+const BALLS = {
+  classic:  { label: 'Classic',  cost: 0 },
+  sunburst: { label: 'Sunburst', cost: 150 },
+  ocean:    { label: 'Ocean',    cost: 300 },
+  neon:     { label: 'Neon',     cost: 500 },
+  lava:     { label: 'Lava',     cost: 800 },
+  ice:      { label: 'Ice',      cost: 1200 },
+  galaxy:   { label: 'Galaxy',   cost: 1800 },
+  gold:     { label: 'Gold',     cost: 2600 },
+  rainbow:  { label: 'Rainbow',  cost: 4000 }
+};
+const BALL_ORDER = ['classic','sunburst','ocean','neon','lava','ice','galaxy','gold','rainbow'];
+
+// Built-in avatars, drawn as emoji so there is nothing to load.
+const AVATARS = ['golf','🙂','😎','🤠','👽','🐸','🐱','🦊','🐼','🦁','🐧','🦄','🔥','⚡','🌊','🍀'];
+
+const profile = {
+  id: null, token: null, name: 'Player', avatar: 'golf', avatarImg: null,
+  ball: 'classic', points: 0, unlocked: ['classic'], tournaments: 0, wins: 0,
+  online: false            // false when the backend could not be reached
+};
+
+function loadLocalProfile(){
+  try{
+    const raw = localStorage.getItem('mg_profile');
+    if (raw) Object.assign(profile, JSON.parse(raw));
+  }catch(e){}
+}
+function saveLocalProfile(){
+  try{
+    localStorage.setItem('mg_profile', JSON.stringify({
+      id: profile.id, token: profile.token, name: profile.name, avatar: profile.avatar,
+      avatarImg: profile.avatarImg, ball: profile.ball, points: profile.points,
+      unlocked: profile.unlocked, tournaments: profile.tournaments, wins: profile.wins
+    }));
+  }catch(e){}
+}
+const randToken = () => Array.from(crypto.getRandomValues(new Uint8Array(24)))
+  .map(b => b.toString(16).padStart(2, '0')).join('');
+
+// Creates the profile on first run, otherwise refreshes it. Any backend failure
+// leaves the cached local copy in place so the game still runs offline.
+async function initProfile(){
+  loadLocalProfile();
+  try{
+    if (!profile.id || !profile.token){
+      profile.token = randToken();
+      const id = await rpc('mg_create_profile',
+        { p_name: profile.name, p_avatar: profile.avatar, p_token: profile.token });
+      profile.id = typeof id === 'string' ? id : (id && id.id) || null;
+      if (!profile.id) throw new Error('no id');
+    } else {
+      const rows = await rpc('mg_get_profile', { p_id: profile.id, p_token: profile.token });
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      if (row){
+        profile.name = row.name; profile.avatar = row.avatar;
+        profile.avatarImg = row.avatar_img; profile.ball = row.ball;
+        profile.points = row.points; profile.unlocked = row.unlocked || ['classic'];
+        profile.tournaments = row.tournaments; profile.wins = row.wins;
+      }
+    }
+    profile.online = true;
+  }catch(e){
+    profile.online = false;                      // offline: keep playing locally
+  }
+  saveLocalProfile();
+  paintProfileChip();
+}
+
+async function pushProfile(){
+  saveLocalProfile();
+  paintProfileChip();
+  if (!profile.online || !profile.id) return false;
+  try{
+    await rpc('mg_save_profile', {
+      p_id: profile.id, p_token: profile.token, p_name: profile.name,
+      p_avatar: profile.avatar, p_avatar_img: profile.avatarImg, p_ball: profile.ball
+    });
+    return true;
+  }catch(e){ return false; }
+}
 
 /* ============================================================
    SEEDED RNG  (identical courses on both devices)
@@ -567,27 +779,37 @@ function genCourse(seed, diff){
    GAME STATE
    ============================================================ */
 const G = {
-  mode: 'menu',          // menu | play
+  mode: 'menu',          // menu | play | over
   online: false,
+  isHost: false,
+  started: false,
   seed: 0,
   hole: 0,
   course: null,
-  me: 0,                 // my player index
-  turn: 0,               // whose shot it is
+  me: 0,                 // my index into players
+  myPid: null,           // stable id for this device
+  roster: [],            // lobby entries: {pid,name,avatar,avatarImg,ball}
   players: [],
   aiming: false,
   aim: { x: 0, y: 0 },
-  simTime: 0,
-  busy: false,           // a shot is in flight
+  holeEnding: false,
+  lastPoints: 0,
+  lastRank: 0,
   overview: false,
   viewLock: 0            // seconds of forced overview at hole start
 };
 
-function newPlayer(name){
-  return { name, scores: new Array(HOLES).fill(null), strokes: 0,
-           holed: false, ball: { x: 0, y: 0, vx: 0, vy: 0, moving: false, portalCd: 0 },
+function newPlayer(name, opts){
+  opts = opts || {};
+  return { pid: opts.pid || 'local', name,
+           avatar: opts.avatar || 'golf', avatarImg: opts.avatarImg || null,
+           ballSkin: opts.ball || 'classic',
+           scores: new Array(HOLES).fill(null), strokes: 0,
+           holed: false, gone: false, sunk: false,
+           ball: { x: 0, y: 0, vx: 0, vy: 0, moving: false, portalCd: 0, trail: [] },
            lastRest: { x: 0, y: 0 } };
 }
+const findPlayer = pid => G.players.find(p => p.pid === pid);
 
 /* ============================================================
    CANVAS + CAMERA
@@ -633,11 +855,11 @@ function updateCamera(dt){
   cam.y += (cam.ty - cam.y) * k;
   cam.zoom += (cam.tz - cam.zoom) * k;
 }
+// With everyone putting at once the camera stays on my own ball rather than
+// chasing whoever happens to be moving.
 function focusBall(){
-  const moving = G.players.find(p => p.ball.moving);
-  if (moving) return moving.ball;
-  const p = G.players[G.turn];
-  return p ? p.ball : { x: WORLD_W / 2, y: WORLD_H / 2 };
+  const me = G.players[G.me];
+  return me ? me.ball : { x: WORLD_W / 2, y: WORLD_H / 2 };
 }
 
 /* ============================================================
@@ -934,6 +1156,71 @@ function buildStatic(){
   g.beginPath(); g.arc(tee.x, tee.y, 10, 0, Math.PI * 2); g.stroke();
 }
 
+/* ---------- ball skins ----------
+   Each skin is a small painter so the same code draws the ball on the course
+   and in the shop preview. `t` is the animation clock. */
+const BALL_SKINS = {
+  classic:  { trail: '#ffffff', a: '#ffffff', b: '#d8ded6' },
+  sunburst: { trail: '#ffce4a', a: '#fff0b8', b: '#f2a01e' },
+  ocean:    { trail: '#67c8ff', a: '#cfefff', b: '#1f7fd0' },
+  neon:     { trail: '#7dff9a', a: '#e6ffe9', b: '#17d64a', glow: '#48ff78' },
+  lava:     { trail: '#ff7a3d', a: '#ffd2a8', b: '#cc2b12', glow: '#ff5a1f' },
+  ice:      { trail: '#cdf3ff', a: '#ffffff', b: '#8fd8f2' },
+  galaxy:   { trail: '#b88bff', a: '#8f7bff', b: '#241a52', stars: true },
+  gold:     { trail: '#ffd97a', a: '#fff3c4', b: '#c8951a', shine: true },
+  rainbow:  { trail: '#ffffff', rainbow: true, a: '#ffffff', b: '#dddddd' }
+};
+
+function drawBall(g, x, y, r, skinId, t){
+  const s = BALL_SKINS[skinId] || BALL_SKINS.classic;
+  g.save();
+  if (s.glow){ g.shadowColor = s.glow; g.shadowBlur = 12; }
+
+  if (s.rainbow){
+    // six wedges, slowly rotating
+    const cols = ['#ff5a5a','#ffa23d','#ffe14a','#54e07a','#4aa8ff','#b06bff'];
+    const rot = (t || 0) / 900;
+    for (let k = 0; k < 6; k++){
+      g.fillStyle = cols[k];
+      g.beginPath(); g.moveTo(x, y);
+      g.arc(x, y, r, rot + k * Math.PI / 3, rot + (k + 1) * Math.PI / 3);
+      g.closePath(); g.fill();
+    }
+  } else {
+    const grad = g.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+    grad.addColorStop(0, s.a); grad.addColorStop(1, s.b);
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  g.shadowBlur = 0;
+
+  if (s.stars){
+    g.fillStyle = 'rgba(255,255,255,.95)';
+    for (let k = 0; k < 5; k++){
+      const a = k * 2.3 + (t || 0) / 1400;
+      const rr = r * (0.28 + 0.18 * ((k % 3) + 1) / 3);
+      g.beginPath(); g.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr, r * 0.09, 0, Math.PI * 2); g.fill();
+    }
+  }
+  if (s.shine){
+    g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = r * 0.16;
+    g.beginPath(); g.arc(x, y, r * 0.66, -2.5, -1.2); g.stroke();
+  }
+  if (skinId === 'ocean'){
+    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = r * 0.14; g.lineCap = 'round';
+    g.beginPath(); g.arc(x, y + r * 0.15, r * 0.55, 0.35, 1.25); g.stroke();
+  }
+  if (skinId === 'lava'){
+    g.strokeStyle = 'rgba(255,220,120,.85)'; g.lineWidth = r * 0.13; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(x - r * 0.5, y - r * 0.1); g.lineTo(x - r * 0.05, y + r * 0.2);
+    g.lineTo(x + r * 0.45, y - r * 0.25); g.stroke();
+  }
+  // shared highlight
+  g.fillStyle = 'rgba(255,255,255,.7)';
+  g.beginPath(); g.arc(x - r * 0.32, y - r * 0.34, r * 0.24, 0, Math.PI * 2); g.fill();
+  g.restore();
+}
+
 // confetti for a birdie or better
 const confetti = [];
 function burstConfetti(n){
@@ -1077,29 +1364,23 @@ function draw(){
   // --- balls ---
   G.players.forEach((p, i) => {
     const b = p.ball;
-    const base = i === 0 ? '#ffffff' : '#ff6a5d';
-    // motion trail
+    if (p.gone) return;                       // player left the tournament
+    const skin = BALL_SKINS[p.ballSkin] || BALL_SKINS.classic;
     if (b.trail && b.trail.length > 1){
       for (let k = 0; k < b.trail.length; k++){
         const f = k / b.trail.length;
-        ctx.globalAlpha = f * 0.3;
-        ctx.fillStyle = base;
+        ctx.globalAlpha = f * 0.28;
+        ctx.fillStyle = skin.trail;
         ctx.beginPath(); ctx.arc(b.trail[k].x, b.trail[k].y, BALL_R * (0.35 + f * 0.5), 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
     }
     ctx.fillStyle = 'rgba(25,45,28,.3)';
     ctx.beginPath(); ctx.ellipse(b.x, b.y + 4, BALL_R * 1.05, BALL_R * 0.72, 0, 0, Math.PI * 2); ctx.fill();
-    const bg2 = ctx.createRadialGradient(b.x - 2.6, b.y - 3, 0.8, b.x, b.y, BALL_R);
-    bg2.addColorStop(0, i === 0 ? '#ffffff' : '#ffb1a7');
-    bg2.addColorStop(1, i === 0 ? '#d8ded6' : '#e04b3f');
-    ctx.fillStyle = bg2;
-    ctx.beginPath(); ctx.arc(b.x, b.y, BALL_R, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,.75)';
-    ctx.beginPath(); ctx.arc(b.x - 2.4, b.y - 2.6, BALL_R * 0.28, 0, Math.PI * 2); ctx.fill();
-    if (i === G.turn && !G.busy && !p.holed){
-      ctx.strokeStyle = i === 0 ? 'rgba(255,255,255,.9)' : 'rgba(255,106,93,.9)';
-      ctx.lineWidth = 2;
+    drawBall(ctx, b.x, b.y, BALL_R, p.ballSkin, perfNow);
+    // ring on my own ball while I can take a shot
+    if (i === G.me && !p.holed && !b.moving && G.mode === 'play'){
+      ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2;
       const rr = BALL_R + 6 + Math.sin(perfNow / 260) * 2.2;
       ctx.beginPath(); ctx.arc(b.x, b.y, rr, 0, Math.PI * 2); ctx.stroke();
     }
@@ -1136,13 +1417,16 @@ function loop(t){
     let guard = 0;
     while (acc >= DT && guard++ < 12){
       acc -= DT;
-      G.players.forEach(p => stepBall(p, DT));
-      if (G.busy){
-        G.simTime += DT;
-        if (G.simTime > SHOT_TIMEOUT) G.players.forEach(p => { p.ball.moving = false; p.ball.vx = p.ball.vy = 0; });
-      }
+      // Every ball is simulated independently — players are not waiting on a
+      // shared turn, so each one carries its own in-flight timer.
+      G.players.forEach(p => {
+        if (!p.ball.moving) return;
+        stepBall(p, DT);
+        p.shotTime = (p.shotTime || 0) + DT;
+        if (p.shotTime > SHOT_TIMEOUT){ p.ball.moving = false; p.ball.vx = p.ball.vy = 0; }
+      });
     }
-    if (G.busy && !G.players.some(p => p.ball.moving)) shotSettled();
+    G.players.forEach(p => { if (p.inFlight && !p.ball.moving) ballSettled(p); });
     updateCamera(dt);
 
     // motion trails
@@ -1172,29 +1456,39 @@ requestAnimationFrame(loop);
 /* ============================================================
    SHOT FLOW
    ============================================================ */
-const canShoot = () =>
-  G.mode === 'play' && !G.busy && G.turn === G.me &&
-  G.players[G.me] && !G.players[G.me].holed;
+// Everyone plays at once, so the only thing gating a shot is my own ball:
+// it has to be at rest and I must still be on this hole.
+const canShoot = () => {
+  const me = G.players[G.me];
+  return G.mode === 'play' && me && !me.holed && !me.gone && !me.ball.moving;
+};
 
-function takeShot(ang, pow, broadcast){
-  const p = G.players[G.turn];
-  if (!p || p.holed) return;
+function takeShot(ang, pow, broadcast, who){
+  const p = who || G.players[G.me];
+  if (!p || p.holed || p.gone) return;
   p.strokes++;
   p.lastRest = { x: p.ball.x, y: p.ball.y };
   p.sunk = false;
+  p.inFlight = true;
+  p.shotTime = 0;
   p.ball.vx = Math.cos(ang) * pow * MAX_SPEED;
   p.ball.vy = Math.sin(ang) * pow * MAX_SPEED;
   p.ball.moving = true;
   p.ball.portalCd = 0.25;
-  G.busy = true; G.simTime = 0;
-  sfxHit(pow);
+  if (p === G.players[G.me]) sfxHit(pow);
   updateHUD();
-  if (broadcast && G.online) net.send({ t: 'shot', hole: G.hole, idx: G.turn, ang, pow });
+  if (broadcast && G.online){
+    // the origin travels with the shot so a peer replays it from the right spot
+    net.send({ t: 'shot', hole: G.hole, pid: p.pid, ang, pow,
+               x: p.lastRest.x, y: p.lastRest.y, strokes: p.strokes });
+  }
 }
 
-function shotSettled(){
-  const p = G.players[G.turn];
-  if (!p){ G.busy = false; return; }
+// One player's ball has come to rest. Only that player's own client scores it;
+// everyone else waits for the authoritative 'rest' message.
+function ballSettled(p){
+  p.inFlight = false;
+  const mine = p === G.players[G.me];
 
   if (p.sunk){
     p.holed = true;
@@ -1203,44 +1497,37 @@ function shotSettled(){
     flash(p.strokes === 1 ? 'Hole in One!' : (SCORE_NAMES[rel] || `+${rel}`),
           `${p.name} · ${p.strokes} stroke${p.strokes > 1 ? 's' : ''}`,
           rel < 0 ? 'good' : rel > 0 ? 'bad' : '');
-    sfxDrop();
-    if (rel < 0) burstConfetti(p.strokes === 1 ? 90 : 46);
+    if (mine){ sfxDrop(); if (rel < 0) burstConfetti(p.strokes === 1 ? 90 : 46); }
   } else if (p.strokes >= STROKE_LIMIT){
     p.holed = true;
     p.scores[G.hole] = STROKE_LIMIT;
     flash('Max strokes', `${p.name} picks up`);
   }
 
-  const shooter = G.turn;
-  G.busy = false;
-
-  // The shooter decides whose turn is next, not just where the ball stopped.
-  // Leaving the other client to work that out from its own simulation meant a
-  // paused tab (backgrounded phone, throttled rAF) never advanced the turn.
-  const done = G.players.every(x => x.holed);
-  if (!done) advanceTurn();
-
-  if (G.online && shooter === G.me){
-    net.send({ t: 'rest', hole: G.hole, idx: shooter,
-               x: p.ball.x, y: p.ball.y, strokes: p.strokes, holed: p.holed,
-               score: p.scores[G.hole], turn: G.turn, next: done });
+  if (mine && G.online){
+    net.send({ t: 'rest', hole: G.hole, pid: p.pid,
+               x: p.ball.x, y: p.ball.y, strokes: p.strokes,
+               holed: p.holed, score: p.scores[G.hole] });
   }
-
-  if (done) setTimeout(nextHole, 1400);
   updateHUD();
+  maybeFinishHole();
 }
 
-// Rotate to the next player still on the hole. Advancing the hole itself is
-// handled by the caller, so this stays a pure rotation.
-function advanceTurn(){
-  for (let i = 1; i <= G.players.length; i++){
-    const n = (G.turn + i) % G.players.length;
-    if (!G.players[n].holed){ G.turn = n; break; }
-  }
+// Only the host decides when a hole is over, so every client advances together
+// even if one of them is mid-replay of somebody else's shot.
+function maybeFinishHole(){
+  if (!G.isHost && G.online) return;
+  if (G.holeEnding) return;
+  const live = G.players.filter(p => !p.gone);
+  if (!live.length || !live.every(p => p.holed)) return;
+  G.holeEnding = true;
+  if (G.online) net.send({ t: 'hole', next: G.hole + 1 });
+  setTimeout(() => advanceHole(G.hole + 1), 1400);
 }
 
-function nextHole(){
-  G.hole++;
+function advanceHole(index){
+  G.holeEnding = false;
+  G.hole = index;
   if (G.hole >= HOLES){ endGame(); return; }
   loadHole();
 }
@@ -1249,15 +1536,18 @@ function loadHole(){
   G.course = genCourse(G.seed + G.hole * 7919, DIFF_CURVE[G.hole] ?? 0.5);
   parCache[G.hole] = G.course.par;
   buildStatic();
-  G.players.forEach(p => {
-    p.strokes = 0; p.holed = false; p.sunk = false;
-    p.ball.x = G.course.tee.x + (p === G.players[1] ? 9 : -9);
+  const n = Math.max(1, G.players.length);
+  G.players.forEach((p, i) => {
+    p.strokes = 0; p.holed = false; p.sunk = false; p.inFlight = false; p.shotTime = 0;
+    // fan the balls across the tee so a big field doesn't stack up
+    const spread = Math.min(13, 26 / n);
+    p.ball.x = G.course.tee.x + (i - (n - 1) / 2) * spread;
     p.ball.y = G.course.tee.y;
     p.ball.vx = p.ball.vy = 0; p.ball.moving = false; p.ball.portalCd = 0;
+    p.ball.trail = [];
     p.lastRest = { x: p.ball.x, y: p.ball.y };
   });
-  G.turn = 0;
-  G.busy = false;
+  G.holeEnding = false;
   G.viewLock = 1.6;                       // show the whole hole for a beat
   cam.x = WORLD_W / 2; cam.y = WORLD_H / 2; cam.zoom = fitZoom();
   updateHUD();
@@ -1266,7 +1556,43 @@ function loadHole(){
 
 function endGame(){
   G.mode = 'over';
+  awardTournamentPoints();
   showCard(true);
+}
+
+/* ---------- points ----------
+   Placement is worth the most, with a participation floor and a small bonus
+   for holes played under par. The server clamps whatever we report. */
+function standings(){
+  return G.players
+    .map(p => ({ p, total: p.scores.reduce((a, b) => a + (b ?? 0), 0) }))
+    .sort((a, b) => a.total - b.total);
+}
+async function awardTournamentPoints(){
+  const board = standings();
+  const n = board.length;
+  const rank = board.findIndex(e => e.p === G.players[G.me]);
+  if (rank < 0) return;
+  const me = G.players[G.me];
+  const placement = n > 1 ? Math.round(100 * (n - 1 - rank) / (n - 1)) : 60;
+  const underPar = me.scores.reduce((a, s, h) =>
+    a + (s !== null && s < (parCache[h] ?? 3) ? 1 : 0), 0);
+  const gained = 25 + placement + underPar * 8;
+  G.lastPoints = gained;
+  G.lastRank = rank + 1;
+  profile.points += gained;
+  if (rank === 0) profile.wins++;
+  profile.tournaments++;
+  saveLocalProfile();
+  if (profile.online && profile.id){
+    try{
+      const pts = await rpc('mg_award_points',
+        { p_id: profile.id, p_token: profile.token, p_points: gained, p_won: rank === 0 });
+      if (typeof pts === 'number' && pts >= 0) profile.points = pts;
+      saveLocalProfile();
+    }catch(e){}
+  }
+  paintProfileChip();
 }
 
 /* ============================================================
@@ -1327,17 +1653,42 @@ const powerFill = document.getElementById('powerfill');
 const toastEl = document.getElementById('toast');
 const turnbar = document.getElementById('turnbar');
 
+function buildRoster(){
+  const box = document.getElementById('roster');
+  box.innerHTML = G.players.map((p, i) => `
+    <div class="rrow" data-i="${i}">
+      <span class="rav">${avatarHTML(p)}</span>
+      <span class="rname">${escapeHTML(p.name)}</span>
+      <span class="rstr">0</span>
+    </div>`).join('');
+}
+
 function updateHUD(){
   if (G.mode !== 'play' && G.mode !== 'over') return;
-  for (let i = 0; i < 2; i++){
-    const p = G.players[i];
-    const st = document.getElementById('st' + i);
-    const nm = document.getElementById('nm' + i);
-    if (!p || !st) continue;
-    st.querySelector('span').textContent = p.holed ? (p.scores[G.hole] ?? p.strokes) : p.strokes;
-    st.classList.toggle('active', i === G.turn && !G.busy);
-    nm.textContent = (G.online && i === G.me) ? 'You' : p.name;
+  const box = document.getElementById('roster');
+  if (box && box.children.length !== G.players.length) buildRoster();
+  if (box){
+    // sorted by strokes so the leader on this hole sits at the top
+    const order = G.players.map((p, i) => i)
+      .sort((a, b) => {
+        const A = G.players[a], B = G.players[b];
+        const sa = A.holed ? (A.scores[G.hole] ?? A.strokes) : A.strokes;
+        const sb = B.holed ? (B.scores[G.hole] ?? B.strokes) : B.strokes;
+        return sa - sb;
+      });
+    order.forEach((pi, slot) => {
+      const p = G.players[pi], row = box.children[slot];
+      if (!row) return;
+      row.querySelector('.rav').innerHTML = avatarHTML(p);
+      row.querySelector('.rname').textContent = p.name;
+      const st = row.querySelector('.rstr');
+      st.textContent = p.holed ? (p.scores[G.hole] ?? p.strokes) : p.strokes;
+      row.classList.toggle('me', pi === G.me);
+      row.classList.toggle('done', !!p.holed);
+      row.classList.toggle('out', !!p.gone);
+    });
   }
+
   document.getElementById('hiHole').textContent = `HOLE ${G.hole + 1}`;
   const tierEl = document.getElementById('hiTier');
   tierEl.textContent = G.course ? G.course.tier : '';
@@ -1351,9 +1702,15 @@ function updateHUD(){
   for (let i = 0; i < HOLES; i++){
     pips.children[i].className = i < G.hole ? 'done' : i === G.hole ? 'now' : '';
   }
-  const mine = G.turn === G.me;
-  turnbar.textContent = G.busy ? '' : (mine ? 'Your turn — drag to aim' : `${G.players[G.turn].name}'s turn`);
-  turnbar.style.opacity = G.busy ? 0 : 1;
+
+  const me = G.players[G.me];
+  const waiting = G.players.filter(p => !p.holed && !p.gone).length;
+  if (!me || me.gone) turnbar.textContent = '';
+  else if (me.ball.moving) turnbar.textContent = '';
+  else if (me.holed) turnbar.textContent = waiting
+    ? `In the hole — waiting for ${waiting} more` : 'In the hole';
+  else turnbar.textContent = 'Drag to aim';
+  turnbar.style.opacity = turnbar.textContent ? 1 : 0;
 }
 
 function relTotal(i){
@@ -1417,8 +1774,10 @@ function showCard(final){
     `<td class="tot">${Array.from({ length: HOLES }, (_, i) => parCache[i] ?? 0)
         .reduce((a, b) => a + b, 0) || '–'}</td></tr>`;
 
-  G.players.forEach((p, i) => {
-    html += `<tr><td>${(G.online && i === G.me) ? 'You' : p.name}</td>`;
+  const order = standings();
+  order.forEach(({ p }) => {
+    const i = G.players.indexOf(p);
+    html += `<tr class="${i === G.me ? 'mine' : ''}"><td>${escapeHTML(p.name)}${p.gone ? ' *' : ''}</td>`;
     let tot = 0;
     for (let hIdx = 0; hIdx < HOLES; hIdx++){
       const s = p.scores[hIdx];
@@ -1434,15 +1793,20 @@ function showCard(final){
   document.getElementById('card').classList.remove('hide');
 }
 function winnerText(){
-  const tot = G.players.map(p => p.scores.reduce((a, b) => a + (b ?? 0), 0));
-  if (G.players.length < 2){
+  const board = standings();
+  if (!board.length) return 'Scorecard';
+  if (board.length < 2){
     const r = relTotal(0);
-    return `Final: ${tot[0]} (${r === 0 ? 'even' : r > 0 ? '+' + r : r})`;
+    return `Final: ${board[0].total} (${r === 0 ? 'even' : r > 0 ? '+' + r : r})`;
   }
-  if (tot[0] === tot[1]) return 'Tied game!';
-  const w = tot[0] < tot[1] ? 0 : 1;
-  return (G.online && w === G.me) ? 'You win! 🏆' : `${G.players[w].name} wins! 🏆`;
+  const tied = board.filter(e => e.total === board[0].total);
+  const mine = board.findIndex(e => e.p === G.players[G.me]);
+  const pts = G.lastPoints ? ` · +${G.lastPoints} pts` : '';
+  if (tied.length > 1) return `Tied at ${board[0].total}${pts}`;
+  if (mine === 0) return `You win! 🏆${pts}`;
+  return `${board[0].p.name} wins 🏆 · you placed ${ordinal(mine + 1)}${pts}`;
 }
+const ordinal = n => n + (['th','st','nd','rd'][(n % 100 - 20) % 10] || ['th','st','nd','rd'][n % 100] || 'th');
 
 /* ============================================================
    SOUND (tiny WebAudio blips, no assets)
@@ -1464,47 +1828,90 @@ const sfxPing = ()  => blip(880, 0.12, 'triangle', 0.05);
 const sfxDrop = ()  => { blip(520, 0.1, 'sine', 0.09); setTimeout(() => blip(780, 0.16, 'sine', 0.09), 90); };
 
 /* ============================================================
-   NETWORKING (PeerJS, host-relayed, turn-based)
-   Both sides generate identical courses from the shared seed and
-   simulate every shot locally; the shooter then sends the exact
-   resting position so the two views can never drift apart.
+   NETWORKING — star topology. Guests connect to the host, the host
+   relays every message on to everyone else. Each client simulates all
+   balls locally from the shared seed; the owner of a ball is the only
+   authority on where it finally stopped and what it scored.
    ============================================================ */
 const net = {
-  peer: null, conn: null, connected: false,
+  peer: null, conns: [], host: null, connected: false, code: null,
 
+  // ---- host ----
   initHost(code){
     return new Promise((resolve, reject) => {
-      const peer = new Peer('mgolf-' + code, { debug: 1 });
-      net.peer = peer;
+      const peer = new Peer('mgolf-' + code, { debug: 0 });
+      net.peer = peer; net.code = code;
       peer.on('open', id => resolve(id));
       peer.on('error', err => reject(err));
       peer.on('connection', conn => {
-        if (net.conn){ conn.close(); return; }          // room is full
-        net.conn = conn;
+        if (G.started){ try{ conn.close(); }catch(e){} return; }   // no late joins
         conn.on('open', () => {
-          net.connected = true;
-          conn.on('data', m => net.recv(m));
-          conn.on('close', net.dropped);
-          startAsHost();
+          net.conns.push(conn);
+          conn.on('data', m => net.onHostData(conn, m));
+          conn.on('close', () => net.guestLeft(conn));
+          conn.on('error', () => net.guestLeft(conn));
         });
       });
     });
   },
 
+  onHostData(conn, m){
+    if (!m || !m.t) return;
+    if (m.t === 'hello'){
+      conn.pid = m.pid;
+      if (!G.roster.some(r => r.pid === m.pid)){
+        G.roster.push({ pid: m.pid, name: m.name, avatar: m.avatar,
+                        avatarImg: m.avatarImg, ball: m.ball });
+      }
+      net.broadcast({ t: 'roster', roster: G.roster });
+      paintLobby();
+      return;
+    }
+    net.relay(conn, m);     // gameplay traffic: pass along, then handle locally
+    net.recv(m);
+  },
+
+  relay(from, m){
+    for (const c of net.conns){
+      if (c === from) continue;
+      try{ c.send(m); }catch(e){}
+    }
+  },
+
+  guestLeft(conn){
+    net.conns = net.conns.filter(c => c !== conn);
+    if (!conn.pid) return;
+    G.roster = G.roster.filter(r => r.pid !== conn.pid);
+    const p = findPlayer(conn.pid);
+    if (p){
+      p.gone = true; p.holed = true;
+      if (p.scores[G.hole] === null) p.scores[G.hole] = STROKE_LIMIT;
+      flash(p.name + ' left', '');
+      updateHUD();
+      maybeFinishHole();
+    }
+    net.broadcast({ t: 'left', pid: conn.pid, roster: G.roster });
+    paintLobby();
+  },
+
+  // ---- guest ----
   initClient(code){
     return new Promise((resolve, reject) => {
       const peer = new Peer({ debug: 0 });
-      net.peer = peer;
-      const timer = setTimeout(() => reject(new Error('timeout')), 12000);
+      net.peer = peer; net.code = code;
+      const timer = setTimeout(() => reject(new Error('timeout')), 14000);
       peer.on('error', err => { clearTimeout(timer); reject(err); });
       peer.on('open', () => {
         const conn = peer.connect('mgolf-' + code, { reliable: true });
-        net.conn = conn;
+        net.host = conn;
         conn.on('open', () => {
           clearTimeout(timer);
           net.connected = true;
           conn.on('data', m => net.recv(m));
-          conn.on('close', net.dropped);
+          conn.on('close', net.hostGone);
+          conn.send({ t: 'hello', pid: G.myPid, name: profile.name,
+                      avatar: profile.avatar, avatarImg: profile.avatarImg,
+                      ball: profile.ball });
           resolve();
         });
         conn.on('error', err => { clearTimeout(timer); reject(err); });
@@ -1512,42 +1919,73 @@ const net = {
     });
   },
 
-  send(msg){ if (net.conn && net.connected) try{ net.conn.send(msg); }catch(e){} },
-
-  dropped(){
+  hostGone(){
     net.connected = false;
-    flash('Opponent left', 'Returning to menu');
+    flash('Host left', 'Returning to menu');
     setTimeout(() => location.reload(), 2200);
   },
+
+  // send to everyone (host fans out; guest sends up to the host to fan out)
+  broadcast(msg){
+    if (G.isHost){ for (const c of net.conns){ try{ c.send(msg); }catch(e){} } }
+    else if (net.host){ try{ net.host.send(msg); }catch(e){} }
+  },
+  send(msg){ net.broadcast(msg); },
 
   recv(m){
     if (!m || !m.t) return;
     switch (m.t){
+      case 'roster':
+        G.roster = m.roster || [];
+        paintLobby();
+        break;
+
+      case 'left': {
+        G.roster = m.roster || G.roster;
+        const p = findPlayer(m.pid);
+        if (p){
+          p.gone = true; p.holed = true;
+          if (p.scores[G.hole] === null) p.scores[G.hole] = STROKE_LIMIT;
+          updateHUD();
+        }
+        paintLobby();
+        break;
+      }
+
       case 'start':
         G.seed = m.seed;
-        beginGame(1, m.hostName);
+        G.roster = m.roster || G.roster;
+        beginGame(m.roster);
         break;
-      case 'shot':
-        if (m.hole !== G.hole) return;
-        G.turn = m.idx;
-        takeShot(m.ang, m.pow, false);
+
+      case 'shot': {
+        const p = findPlayer(m.pid);
+        if (!p || m.hole !== G.hole || p === G.players[G.me]) return;
+        // replay from the shooter's own origin, so a drifted copy snaps back
+        if (typeof m.x === 'number'){ p.ball.x = m.x; p.ball.y = m.y; }
+        p.strokes = (m.strokes || p.strokes + 1) - 1;   // takeShot increments
+        takeShot(m.ang, m.pow, false, p);
         break;
+      }
+
       case 'rest': {
-        const p = G.players[m.idx];
-        if (!p || m.hole !== G.hole) return;
-        // The shooter's result is authoritative, so abandon our own replay of
-        // the shot rather than letting it finish and re-decide the turn.
-        G.players.forEach(q => { q.ball.moving = false; q.ball.vx = q.ball.vy = 0; });
-        G.busy = false;
+        const p = findPlayer(m.pid);
+        if (!p || m.hole !== G.hole || p === G.players[G.me]) return;
+        p.ball.moving = false; p.ball.vx = p.ball.vy = 0;
+        p.inFlight = false;
         p.ball.x = m.x; p.ball.y = m.y;
         p.strokes = m.strokes;
         p.holed = m.holed;
         p.scores[G.hole] = m.score ?? null;
-        if (m.next) setTimeout(nextHole, 1400);
-        else if (typeof m.turn === 'number') G.turn = m.turn;
         updateHUD();
+        maybeFinishHole();
         break;
       }
+
+      case 'hole':
+        G.holeEnding = true;
+        setTimeout(() => advanceHole(m.next), 1400);
+        break;
     }
   }
 };
@@ -1555,65 +1993,75 @@ const net = {
 /* ============================================================
    FLOW / SCREENS
    ============================================================ */
-const show = id => {
-  ['scMenu', 'scHost', 'scJoin'].forEach(s =>
-    document.getElementById(s).classList.toggle('hide', s !== id));
-  if (id === null) ['scMenu', 'scHost', 'scJoin'].forEach(s =>
-    document.getElementById(s).classList.add('hide'));
-};
+const SCREENS = ['scMenu', 'scHost', 'scJoin', 'scSettings', 'scBoard'];
+const show = id => SCREENS.forEach(s =>
+  document.getElementById(s).classList.toggle('hide', s !== id));
 const randCode = () => {
   const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no I/O/0/1
   let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)];
   return s;
 };
 
-function beginGame(myIndex, otherName){
+function beginGame(roster){
+  G.started = true;
   G.mode = 'play';
-  G.me = myIndex;
-  G.players = myIndex === 0
-    ? [newPlayer('You'), newPlayer(otherName || 'Rival')]
-    : [newPlayer(otherName || 'Host'), newPlayer('You')];
+  G.players = roster.map(r => newPlayer(r.name, r));
+  G.me = Math.max(0, G.players.findIndex(p => p.pid === G.myPid));
   G.hole = 0;
   show(null);
+  document.querySelectorAll('.screen').forEach(el => el.classList.add('hide'));
   hud.style.display = 'block';
-  document.getElementById('av0').textContent = '🙂';
-  document.getElementById('av1').textContent = '😀';
+  buildRoster();
   loadHole();
 }
-function startAsHost(){
+
+function startTournament(){
   G.seed = (Math.random() * 1e9) | 0;
-  net.send({ t: 'start', seed: G.seed, hostName: 'Host' });
-  beginGame(0, 'Rival');
+  net.broadcast({ t: 'start', seed: G.seed, roster: G.roster });
+  beginGame(G.roster);
 }
 
-// --- menu buttons ---
+const myRosterEntry = () => ({
+  pid: G.myPid, name: profile.name, avatar: profile.avatar,
+  avatarImg: profile.avatarImg, ball: profile.ball
+});
+
+// --- menu ---
 document.getElementById('bHost').onclick = async () => {
-  G.online = true;
+  G.online = true; G.isHost = true;
   const code = randCode();
+  G.roster = [myRosterEntry()];
   document.getElementById('hostCode').textContent = code;
-  document.getElementById('hostMsg').textContent = 'Share this code. Waiting for your opponent…';
+  document.getElementById('hostMsg').textContent = 'Share this code. Anyone with it can join.';
   show('scHost');
+  paintLobby();
   try{
     await net.initHost(code);
   }catch(err){
-    document.getElementById('hostMsg').textContent = 'Could not open a room. Check your connection and try again.';
-    document.getElementById('hostSpin').style.display = 'none';
+    document.getElementById('hostMsg').textContent =
+      'Could not open a room. Check your connection and try again.';
   }
 };
+document.getElementById('bStart').onclick = () => {
+  if (G.roster.length < 1) return;
+  startTournament();
+};
 document.getElementById('bHostBack').onclick = () => location.reload();
-document.getElementById('bJoinScreen').onclick = () => { show('scJoin'); document.getElementById('joinCode').focus(); };
+document.getElementById('bJoinScreen').onclick = () => {
+  show('scJoin'); document.getElementById('joinCode').focus();
+};
 document.getElementById('bJoinBack').onclick = () => show('scMenu');
 
 document.getElementById('bJoin').onclick = async () => {
   const code = document.getElementById('joinCode').value.trim().toUpperCase();
   const err = document.getElementById('joinErr');
   if (code.length !== 4){ err.textContent = 'Enter the 4-character code.'; return; }
-  G.online = true;
+  G.online = true; G.isHost = false;
   err.textContent = 'Connecting…';
   document.getElementById('bJoin').disabled = true;
   try{
     await net.initClient(code);
-    err.textContent = 'Connected! Starting…';
+    err.textContent = 'Joined. Waiting for the host to start…';
   }catch(e){
     err.textContent = 'No game found with that code.';
     document.getElementById('bJoin').disabled = false;
@@ -1625,18 +2073,208 @@ document.getElementById('joinCode').addEventListener('keydown', e => {
 });
 
 document.getElementById('bSolo').onclick = () => {
-  G.online = false;
+  G.online = false; G.isHost = true;
   G.seed = (Math.random() * 1e9) | 0;
-  G.mode = 'play';
-  G.me = 0;
-  G.players = [newPlayer('You')];
-  G.hole = 0;
-  show(null);
-  hud.style.display = 'block';
-  document.querySelector('.chip.right').style.display = 'none';
-  document.getElementById('nm1').style.display = 'none';
-  loadHole();
+  G.roster = [myRosterEntry()];
+  beginGame(G.roster);
 };
+
+/* ---------- lobby ---------- */
+function paintLobby(){
+  const list = document.getElementById('lobbyList');
+  if (!list) return;
+  list.innerHTML = G.roster.map((r, i) => `
+    <div class="lrow">
+      <div class="lav">${avatarHTML(r)}</div>
+      <div class="lname">${escapeHTML(r.name)}${r.pid === G.myPid ? ' <em>you</em>' : ''}</div>
+      ${i === 0 ? '<span class="lhost">HOST</span>' : ''}
+    </div>`).join('');
+  const cnt = document.getElementById('lobbyCount');
+  if (cnt) cnt.textContent = G.roster.length + (G.roster.length === 1 ? ' player' : ' players');
+  const start = document.getElementById('bStart');
+  if (start) start.style.display = G.isHost ? '' : 'none';
+}
+
+const escapeHTML = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function avatarHTML(r){
+  if (r && r.avatarImg) return `<img src="${escapeHTML(r.avatarImg)}" alt="">`;
+  const a = r && r.avatar;
+  if (!a || a === 'golf') return '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#fff"/>' +
+    '<circle cx="9.4" cy="9.4" r="2" fill="rgba(0,0,0,.09)"/></svg>';
+  return escapeHTML(a);
+}
+
+/* ---------- settings ---------- */
+function paintProfileChip(){
+  const chip = document.getElementById('meChip');
+  if (!chip) return;
+  chip.innerHTML = `<div class="meav">${avatarHTML(profile)}</div>
+    <div class="meinfo"><b>${escapeHTML(profile.name)}</b>
+    <span>${profile.points} pts${profile.online ? '' : ' · offline'}</span></div>`;
+}
+
+function openSettings(){
+  document.getElementById('setName').value = profile.name;
+  paintAvatarPicker();
+  paintBallShop();
+  document.getElementById('setPoints').textContent = profile.points + ' pts';
+  show('scSettings');
+}
+
+function paintAvatarPicker(){
+  const box = document.getElementById('avGrid');
+  box.innerHTML = AVATARS.map(a => `
+    <button class="avopt ${!profile.avatarImg && profile.avatar === a ? 'on' : ''}" data-av="${escapeHTML(a)}">
+      ${avatarHTML({ avatar: a })}
+    </button>`).join('');
+  box.querySelectorAll('.avopt').forEach(btn => btn.onclick = async () => {
+    profile.avatar = btn.dataset.av; profile.avatarImg = null;
+    await pushProfile(); paintAvatarPicker();
+  });
+  const cur = document.getElementById('avCurrent');
+  cur.innerHTML = avatarHTML(profile);
+}
+
+// Uploaded pictures are cropped square and scaled to 96px before they are
+// stored, so a profile row stays a few KB rather than a few MB.
+function handleAvatarFile(file){
+  if (!file) return;
+  if (!/^image\//.test(file.type)){ flash('Not an image', ''); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = async () => {
+      const S = 96, c = document.createElement('canvas');
+      c.width = c.height = S;
+      const g = c.getContext('2d');
+      const side = Math.min(img.width, img.height);
+      g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, S, S);
+      let data = c.toDataURL('image/jpeg', 0.78);
+      if (data.length > 23000) data = c.toDataURL('image/jpeg', 0.55);
+      if (data.length > 23000){ flash('Image too large', 'Try a smaller picture'); return; }
+      profile.avatarImg = data;
+      await pushProfile();
+      paintAvatarPicker();
+    };
+    img.onerror = () => flash('Could not read image', '');
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function paintBallShop(){
+  const box = document.getElementById('ballGrid');
+  box.innerHTML = BALL_ORDER.map(id => {
+    const meta = BALLS[id];
+    const owned = profile.unlocked.includes(id);
+    const on = profile.ball === id;
+    return `<div class="ballcard ${on ? 'on' : ''} ${owned ? '' : 'locked'}" data-ball="${id}">
+      <canvas width="92" height="92"></canvas>
+      <b>${meta.label}</b>
+      <span>${owned ? (on ? 'Equipped' : 'Tap to equip') : meta.cost + ' pts'}</span>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.ballcard').forEach(card => {
+    const id = card.dataset.ball;
+    const cv2 = card.querySelector('canvas');
+    const g = cv2.getContext('2d');
+    g.clearRect(0, 0, 92, 92);
+    drawBall(g, 46, 46, 27, id, perfNow);
+    if (!profile.unlocked.includes(id)){
+      g.fillStyle = 'rgba(12,18,14,.55)';
+      g.beginPath(); g.arc(46, 46, 27, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#fff'; g.font = 'bold 22px system-ui'; g.textAlign = 'center';
+      g.fillText('🔒', 46, 54);
+    }
+    card.onclick = () => onBallTap(id);
+  });
+}
+
+async function onBallTap(id){
+  if (profile.unlocked.includes(id)){
+    profile.ball = id;
+    await pushProfile();
+    paintBallShop();
+    return;
+  }
+  const cost = BALLS[id].cost;
+  if (profile.points < cost){
+    flash('Not enough points', `${BALLS[id].label} costs ${cost}`);
+    return;
+  }
+  if (!profile.online){
+    flash('Offline', 'Connect to unlock balls');
+    return;
+  }
+  try{
+    const rows = await rpc('mg_unlock_ball',
+      { p_id: profile.id, p_token: profile.token, p_ball: id });
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    if (row && row.ok){
+      profile.points = row.points_left;
+      profile.unlocked = row.owned;
+      profile.ball = id;
+      await pushProfile();
+      flash('Unlocked!', BALLS[id].label);
+      paintBallShop();
+      document.getElementById('setPoints').textContent = profile.points + ' pts';
+    } else {
+      profile.points = row ? row.points_left : profile.points;
+      flash('Not enough points', `${BALLS[id].label} costs ${cost}`);
+      paintBallShop();
+    }
+  }catch(e){ flash('Could not reach server', ''); }
+}
+
+/* ---------- leaderboard ---------- */
+async function openBoard(){
+  show('scBoard');
+  const body = document.getElementById('boardList');
+  body.innerHTML = '<div class="bmsg">Loading…</div>';
+  try{
+    const rows = await rpc('mg_leaderboard', { p_limit: 25 });
+    if (!Array.isArray(rows) || !rows.length){
+      body.innerHTML = '<div class="bmsg">No scores yet. Play a tournament!</div>';
+      return;
+    }
+    body.innerHTML = rows.map((r, i) => `
+      <div class="brow ${r.name === profile.name ? 'mine' : ''}">
+        <span class="brank">${i + 1}</span>
+        <span class="bav">${avatarHTML(r.avatar_img ? { avatarImg: r.avatar_img } : { avatar: r.avatar })}</span>
+        <span class="bname">${escapeHTML(r.name)}</span>
+        <span class="bsub">${r.wins}W · ${r.tournaments}T</span>
+        <span class="bpts">${r.points}</span>
+      </div>`).join('');
+  }catch(e){
+    body.innerHTML = '<div class="bmsg">Could not load the leaderboard.</div>';
+  }
+}
+
+document.getElementById('bSettings').onclick = openSettings;
+document.getElementById('bBoard').onclick = openBoard;
+document.getElementById('bSetBack').onclick = () => show('scMenu');
+document.getElementById('bBoardBack').onclick = () => show('scMenu');
+document.getElementById('setName').addEventListener('change', async e => {
+  const v = e.target.value.trim().slice(0, 16) || 'Player';
+  profile.name = v; e.target.value = v;
+  await pushProfile();
+});
+document.getElementById('avUpload').addEventListener('change', e => {
+  handleAvatarFile(e.target.files && e.target.files[0]);
+  e.target.value = '';
+});
+
+/* ---------- boot ---------- */
+G.myPid = (() => {
+  try{
+    let v = localStorage.getItem('mg_pid');
+    if (!v){ v = randToken().slice(0, 12); localStorage.setItem('mg_pid', v); }
+    return v;
+  }catch(e){ return randToken().slice(0, 12); }
+})();
+initProfile();
 </script>
 </body>
 </html>
