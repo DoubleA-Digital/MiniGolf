@@ -1211,23 +1211,28 @@ function shotSettled(){
     flash('Max strokes', `${p.name} picks up`);
   }
 
-  // the shooter is the source of truth for where the ball ended up
-  if (G.online && G.turn === G.me){
-    net.send({ t: 'rest', hole: G.hole, idx: G.me,
+  const shooter = G.turn;
+  G.busy = false;
+
+  // The shooter decides whose turn is next, not just where the ball stopped.
+  // Leaving the other client to work that out from its own simulation meant a
+  // paused tab (backgrounded phone, throttled rAF) never advanced the turn.
+  const done = G.players.every(x => x.holed);
+  if (!done) advanceTurn();
+
+  if (G.online && shooter === G.me){
+    net.send({ t: 'rest', hole: G.hole, idx: shooter,
                x: p.ball.x, y: p.ball.y, strokes: p.strokes, holed: p.holed,
-               score: p.scores[G.hole] });
+               score: p.scores[G.hole], turn: G.turn, next: done });
   }
 
-  G.busy = false;
-  advanceTurn();
+  if (done) setTimeout(nextHole, 1400);
   updateHUD();
 }
 
+// Rotate to the next player still on the hole. Advancing the hole itself is
+// handled by the caller, so this stays a pure rotation.
 function advanceTurn(){
-  if (G.players.every(p => p.holed)){
-    setTimeout(nextHole, 1400);
-    return;
-  }
   for (let i = 1; i <= G.players.length; i++){
     const n = (G.turn + i) % G.players.length;
     if (!G.players[n].holed){ G.turn = n; break; }
@@ -1408,7 +1413,9 @@ function showCard(final){
 
   let html = '<tr class="par-row"><td>Par</td>' +
     Array.from({ length: HOLES }, (_, i) => `<td>${parCache[i] ?? '–'}</td>`).join('') +
-    `<td class="tot">${Object.values(parCache).reduce((a, b) => a + b, 0) || '–'}</td></tr>`;
+    // sum only the holes shown in the row above, never whatever else is cached
+    `<td class="tot">${Array.from({ length: HOLES }, (_, i) => parCache[i] ?? 0)
+        .reduce((a, b) => a + b, 0) || '–'}</td></tr>`;
 
   G.players.forEach((p, i) => {
     html += `<tr><td>${(G.online && i === G.me) ? 'You' : p.name}</td>`;
@@ -1528,11 +1535,16 @@ const net = {
       case 'rest': {
         const p = G.players[m.idx];
         if (!p || m.hole !== G.hole) return;
+        // The shooter's result is authoritative, so abandon our own replay of
+        // the shot rather than letting it finish and re-decide the turn.
+        G.players.forEach(q => { q.ball.moving = false; q.ball.vx = q.ball.vy = 0; });
+        G.busy = false;
         p.ball.x = m.x; p.ball.y = m.y;
-        p.ball.vx = p.ball.vy = 0; p.ball.moving = false;
         p.strokes = m.strokes;
         p.holed = m.holed;
         p.scores[G.hole] = m.score ?? null;
+        if (m.next) setTimeout(nextHole, 1400);
+        else if (typeof m.turn === 'number') G.turn = m.turn;
         updateHUD();
         break;
       }
