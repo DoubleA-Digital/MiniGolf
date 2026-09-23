@@ -62,6 +62,15 @@
   .iconbtn:active{transform:scale(.94)}
   #btnZoom{right:14px;bottom:calc(20px + env(safe-area-inset-bottom))}
   #btnCard{right:14px;bottom:calc(74px + env(safe-area-inset-bottom))}
+  #btnMute{right:14px;bottom:calc(128px + env(safe-area-inset-bottom))}
+  #btnQuit{right:14px;bottom:calc(182px + env(safe-area-inset-bottom))}
+  #power.fine{box-shadow:0 0 0 2px #ffd23d}
+  .cardbtns{display:flex;gap:9px;margin-top:14px}
+  .cardbtns .btn{flex:1;min-width:0;margin-top:0}
+  .btn.alt.dark{background:#e9ede8;color:#2a352c;box-shadow:0 4px 0 rgba(0,0,0,.12);border:0}
+  @media (prefers-reduced-motion: reduce){
+    #intro,#toast{transition:none}
+  }
   .iconbtn svg{width:22px;height:22px}
 
   #power{position:absolute;left:14px;bottom:calc(20px + env(safe-area-inset-bottom));
@@ -138,7 +147,14 @@
   .rav svg{width:100%;height:100%}
   .rname{color:#fff;font-size:12.5px;font-weight:800;white-space:nowrap;overflow:hidden;
     text-overflow:ellipsis;max-width:104px}
-  .rstr{color:#fff;font-size:12.5px;font-weight:900;margin-left:auto;font-variant-numeric:tabular-nums}
+  .rstr{color:#fff;font-size:12.5px;font-weight:900;font-variant-numeric:tabular-nums;
+    min-width:14px;text-align:right}
+  .rtot{margin-left:auto;font-size:10px;font-weight:800;opacity:.7;color:#fff;
+    font-variant-numeric:tabular-nums;min-width:20px;text-align:right}
+  .rtot.under{color:#ffd86b;opacity:1}
+  .rtot.over{color:#cfd6cd}
+  .rrow.me .rtot{color:#16301b}
+  .rrow.me .rtot.under{color:#a67c00}
 
   /* ---------- menu chip ---------- */
   .mechip{position:absolute;top:calc(14px + env(safe-area-inset-top));left:14px;
@@ -255,6 +271,12 @@
   <button class="iconbtn" id="btnCard" title="Scorecard">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
   </button>
+  <button class="iconbtn" id="btnMute" title="Sound">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path id="sndOn" d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/><path id="sndOff" d="M17 10l4 4m0-4l-4 4" style="display:none"/></svg>
+  </button>
+  <button class="iconbtn" id="btnQuit" title="Leave round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+  </button>
   <button class="iconbtn" id="btnZoom" title="Toggle view">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4"/><path d="M20 9V5a1 1 0 0 0-1-1h-4"/><path d="M4 15v4a1 1 0 0 0 1 1h4"/><path d="M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
   </button>
@@ -290,6 +312,7 @@
 <div class="screen hide" id="scHost">
   <h1>Room Code</h1>
   <div class="code" id="hostCode">----</div>
+  <button class="btn mini" id="bShare">Copy invite link</button>
   <p id="hostMsg">Share this code. Anyone with it can join.</p>
   <div class="lobby">
     <div class="lobbyhead"><span id="lobbyCount">1 player</span></div>
@@ -345,7 +368,10 @@
       <thead><tr id="cardHead"></tr></thead>
       <tbody id="cardBody"></tbody>
     </table>
-    <button class="btn" id="bCardClose">Close</button>
+    <div class="cardbtns">
+      <button class="btn" id="bCardAgain">Play Again</button>
+      <button class="btn alt dark" id="bCardClose">Close</button>
+    </div>
   </div>
 </div>
 
@@ -792,6 +818,8 @@ const G = {
   players: [],
   aiming: false,
   aim: { x: 0, y: 0 },
+  pan: { x: 0, y: 0 },   // look-around offset while waiting on others
+  muted: false,
   holeEnding: false,
   lastPoints: 0,
   lastRank: 0,
@@ -843,8 +871,16 @@ function updateCamera(dt){
     // hole you're aiming into. Scales with power, not just with aiming.
     const pull = G.aiming ? Math.min(1, Math.hypot(G.aim.x, G.aim.y) / MAX_DRAG) : 0;
     cam.tz = playZoom() * (1 - 0.24 * pull);
+    // The look-around offset decays once it's my shot again, so panning to
+    // check the hole never leaves me aiming from an off-centre camera.
+    if (!panning && canShoot()){
+      const ease = Math.pow(0.02, dt);
+      G.pan.x *= ease; G.pan.y *= ease;
+      if (Math.abs(G.pan.x) < 0.5) G.pan.x = 0;
+      if (Math.abs(G.pan.y) < 0.5) G.pan.y = 0;
+    }
     const b = focusBall();
-    cam.tx = b.x; cam.ty = b.y;
+    cam.tx = b.x + G.pan.x; cam.ty = b.y + G.pan.y;
     // keep the camera inside the world when the view is smaller than the course
     const halfW = VW / (2 * cam.tz), halfH = VH / (2 * cam.tz);
     cam.tx = (halfW * 2 >= WORLD_W) ? WORLD_W / 2 : Math.max(halfW, Math.min(WORLD_W - halfW, cam.tx));
@@ -856,9 +892,17 @@ function updateCamera(dt){
   cam.zoom += (cam.tz - cam.zoom) * k;
 }
 // With everyone putting at once the camera stays on my own ball rather than
-// chasing whoever happens to be moving.
+// chasing whoever happens to be moving. Once I'm in the hole there is nothing
+// of mine left to watch, so it follows whoever is still playing.
 function focusBall(){
   const me = G.players[G.me];
+  if (me && me.holed && !me.gone){
+    const others = G.players.filter(p => p !== me && !p.holed && !p.gone);
+    if (others.length){
+      const live = others.find(p => p.ball.moving);
+      return (live || others[0]).ball;
+    }
+  }
   return me ? me.ball : { x: WORLD_W / 2, y: WORLD_H / 2 };
 }
 
@@ -1223,7 +1267,13 @@ function drawBall(g, x, y, r, skinId, t){
 
 // confetti for a birdie or better
 const confetti = [];
+// Respect the OS "reduce motion" setting: no confetti storm, no ball trails.
+const REDUCED_MOTION = (() => {
+  try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch(e){ return false; }
+})();
 function burstConfetti(n){
+  if (REDUCED_MOTION) return;
   for (let i = 0; i < n; i++)
     confetti.push({ x: VW / 2, y: VH * 0.42,
       vx: (Math.random() - 0.5) * 520, vy: -180 - Math.random() * 380,
@@ -1388,6 +1438,45 @@ function draw(){
 
   ctx.restore();
 
+  // --- off-screen player markers (screen space) ---
+  // The camera follows my ball, so without these a field of players simply
+  // vanishes. An edge arrow shows where each one is and how far away.
+  if (G.players.length > 1){
+    const cx = VW / 2, cy = VH / 2, pad = 30;
+    G.players.forEach((p, i) => {
+      if (i === G.me || p.gone || p.holed) return;
+      const sx = (p.ball.x - cam.x) * cam.zoom + cx;
+      const sy = (p.ball.y - cam.y) * cam.zoom + cy;
+      if (sx > pad && sx < VW - pad && sy > pad && sy < VH - pad) return;  // visible
+      const dx = sx - cx, dy = sy - cy;
+      const ang = Math.atan2(dy, dx);
+      // push out to the edge of an inset rectangle
+      const hw = VW / 2 - pad, hh = VH / 2 - pad;
+      const t = Math.min(hw / Math.abs(Math.cos(ang) || 1e-6),
+                         hh / Math.abs(Math.sin(ang) || 1e-6));
+      const ex = cx + Math.cos(ang) * t, ey = cy + Math.sin(ang) * t;
+      const dist = Math.round(Math.hypot(p.ball.x - G.players[G.me].ball.x,
+                                         p.ball.y - G.players[G.me].ball.y) / CELL);
+      ctx.save();
+      ctx.translate(ex, ey);
+      ctx.fillStyle = 'rgba(18,26,20,.82)';
+      ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill();
+      ctx.rotate(ang);
+      ctx.fillStyle = p.ball.moving ? '#ffd23d' : 'rgba(255,255,255,.9)';
+      ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(7, -5.5); ctx.lineTo(7, 5.5);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 10px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(p.name || '?').slice(0, 1).toUpperCase(), ex, ey - 2);
+      ctx.font = '700 8px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,.65)';
+      ctx.fillText(dist + 'm', ex, ey + 7);
+    });
+    ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+  }
+
   // --- confetti (screen space) ---
   for (let i = confetti.length - 1; i >= 0; i--){
     const p = confetti[i];
@@ -1433,7 +1522,7 @@ function loop(t){
     G.players.forEach(p => {
       const b = p.ball;
       b.trail = b.trail || [];
-      if (b.moving){
+      if (b.moving && !REDUCED_MOTION){
         b.trail.push({ x: b.x, y: b.y });
         if (b.trail.length > 9) b.trail.shift();
       } else if (b.trail.length){
@@ -1548,6 +1637,7 @@ function loadHole(){
     p.lastRest = { x: p.ball.x, y: p.ball.y };
   });
   G.holeEnding = false;
+  G.pan.x = G.pan.y = 0;                  // a look-around never outlives its hole
   G.viewLock = 1.6;                       // show the whole hole for a beat
   cam.x = WORLD_W / 2; cam.y = WORLD_H / 2; cam.zoom = fitZoom();
   updateHUD();
@@ -1558,6 +1648,28 @@ function endGame(){
   G.mode = 'over';
   awardTournamentPoints();
   showCard(true);
+}
+
+// Another round with the same players — the whole point of a tournament room
+// is not having to re-share a code after every nine holes.
+function restartRound(){
+  document.getElementById('card').classList.add('hide');
+  confetti.length = 0;
+  G.mode = 'play';
+  G.hole = 0;
+  G.holeEnding = false;
+  G.lastPoints = 0; G.lastRank = 0;
+  for (const k of Object.keys(parCache)) delete parCache[k];
+  G.players.forEach(p => {
+    p.scores = new Array(HOLES).fill(null);
+    p.strokes = 0; p.holed = false; p.gone = p.gone; p.sunk = false; p.inFlight = false;
+  });
+  loadHole();
+}
+
+function quitToMenu(){
+  try{ net.peer && net.peer.destroy(); }catch(e){}
+  location.href = location.pathname;      // drop any ?room= so we land on the menu
 }
 
 /* ---------- points ----------
@@ -1598,10 +1710,19 @@ async function awardTournamentPoints(){
 /* ============================================================
    INPUT
    ============================================================ */
-let dragging = false, dragStart = null;
+let dragging = false, dragStart = null, panning = false, panStart = null;
 
 cv.addEventListener('pointerdown', e => {
-  if (!canShoot()) return;
+  if (!canShoot()){
+    // Nothing to aim — let the drag look around the hole instead of doing
+    // nothing, which is most of the time once you've already holed out.
+    if (G.mode === 'play'){
+      panning = true;
+      panStart = { x: e.clientX, y: e.clientY, px: G.pan.x, py: G.pan.y };
+      cv.setPointerCapture(e.pointerId);
+    }
+    return;
+  }
   dragging = true; G.aiming = true;
   dragStart = { x: e.clientX, y: e.clientY };
   G.aim = { x: 0, y: 0 };
@@ -1609,17 +1730,26 @@ cv.addEventListener('pointerdown', e => {
   powerEl.classList.add('on');
 });
 cv.addEventListener('pointermove', e => {
+  if (panning){
+    G.pan.x = panStart.px - (e.clientX - panStart.x) / cam.zoom;
+    G.pan.y = panStart.py - (e.clientY - panStart.y) / cam.zoom;
+    return;
+  }
   if (!dragging) return;
-  // drag away from the target to pull back, like a real putter
-  const dx = dragStart.x - e.clientX, dy = dragStart.y - e.clientY;
+  // drag away from the target to pull back, like a real putter.
+  // Holding shift scales the drag down for fine aim on a long putt.
+  const fine = e.shiftKey ? 0.34 : 1;
+  const dx = (dragStart.x - e.clientX) * fine, dy = (dragStart.y - e.clientY) * fine;
   G.aim = { x: dx, y: dy };
   const pow = Math.min(1, Math.hypot(dx, dy) / MAX_DRAG);
   powerFill.style.height = (pow * 100) + '%';
+  powerEl.classList.toggle('fine', !!e.shiftKey);
 });
 function endDrag(){
+  if (panning){ panning = false; return; }
   if (!dragging) return;
   dragging = false; G.aiming = false;
-  powerEl.classList.remove('on');
+  powerEl.classList.remove('on', 'fine');
   powerFill.style.height = '0%';
   const len = Math.hypot(G.aim.x, G.aim.y);
   if (len < 12 || !canShoot()) return;
@@ -1629,9 +1759,10 @@ function endDrag(){
 }
 // Abort an aim without playing the shot.
 function cancelDrag(){
+  panning = false;
   if (!dragging) return;
   dragging = false; G.aiming = false; G.aim = { x: 0, y: 0 };
-  powerEl.classList.remove('on');
+  powerEl.classList.remove('on', 'fine');
   powerFill.style.height = '0%';
 }
 
@@ -1659,6 +1790,7 @@ function buildRoster(){
     <div class="rrow" data-i="${i}">
       <span class="rav">${avatarHTML(p)}</span>
       <span class="rname">${escapeHTML(p.name)}</span>
+      <span class="rtot">E</span>
       <span class="rstr">0</span>
     </div>`).join('');
 }
@@ -1683,6 +1815,17 @@ function updateHUD(){
       row.querySelector('.rname').textContent = p.name;
       const st = row.querySelector('.rstr');
       st.textContent = p.holed ? (p.scores[G.hole] ?? p.strokes) : p.strokes;
+      // running tournament score, so the standings are visible mid-round
+      let rel = 0;
+      for (let h = 0; h < HOLES; h++){
+        if (p.scores[h] === null) continue;
+        rel += p.scores[h] - (parCache[h] ?? 3);
+      }
+      const tot = row.querySelector('.rtot');
+      if (tot){
+        tot.textContent = rel === 0 ? 'E' : (rel > 0 ? '+' + rel : String(rel));
+        tot.className = 'rtot ' + (rel < 0 ? 'under' : rel > 0 ? 'over' : '');
+      }
       row.classList.toggle('me', pi === G.me);
       row.classList.toggle('done', !!p.holed);
       row.classList.toggle('out', !!p.gone);
@@ -1747,11 +1890,33 @@ function holeIntro(){
   introTimer = setTimeout(() => el.classList.remove('on'), 1500);
 }
 
-document.getElementById('btnZoom').onclick = () => { G.overview = !G.overview; };
+document.getElementById('btnZoom').onclick = () => { G.overview = !G.overview; G.pan.x = G.pan.y = 0; };
 document.getElementById('btnCard').onclick = () => showCard(false);
+document.getElementById('btnMute').onclick = () => setMuted(!G.muted);
+document.getElementById('btnQuit').onclick = () => {
+  if (G.mode === 'play' && !confirmLeave()) return;
+  quitToMenu();
+};
+let leaveArmed = 0;
+function confirmLeave(){
+  // two taps rather than a modal — a browser dialog would freeze the game loop
+  const now = Date.now();
+  if (now - leaveArmed < 2500) return true;
+  leaveArmed = now;
+  flash('Leave round?', 'Tap again to confirm');
+  return false;
+}
+
 document.getElementById('bCardClose').onclick = () => {
-  if (G.mode === 'over'){ location.reload(); return; }
+  if (G.mode === 'over'){ quitToMenu(); return; }
   document.getElementById('card').classList.add('hide');
+};
+document.getElementById('bCardAgain').onclick = () => {
+  if (G.mode !== 'over') { document.getElementById('card').classList.add('hide'); return; }
+  if (G.online && !G.isHost){ flash('Waiting for the host', 'to start another round'); return; }
+  G.seed = (Math.random() * 1e9) | 0;
+  if (G.online) net.broadcast({ t: 'again', seed: G.seed });
+  restartRound();
 };
 
 function showCard(final){
@@ -1814,6 +1979,7 @@ const ordinal = n => n + (['th','st','nd','rd'][(n % 100 - 20) % 10] || ['th','s
 let AC = null;
 const ac = () => (AC = AC || new (window.AudioContext || window.webkitAudioContext)());
 function blip(freq, dur, type, vol){
+  if (G.muted) return;
   try{
     const a = ac(), o = a.createOscillator(), g = a.createGain();
     o.type = type || 'sine'; o.frequency.value = freq;
@@ -1824,6 +1990,16 @@ function blip(freq, dur, type, vol){
   }catch(e){}
 }
 const sfxHit  = pow => blip(180 + pow * 220, 0.08, 'square', 0.06);
+function setMuted(on){
+  G.muted = !!on;
+  try{ localStorage.setItem('mg_muted', G.muted ? '1' : '0'); }catch(e){}
+  const svg = document.getElementById('btnMute');
+  if (svg){
+    svg.querySelector('#sndOn').style.display  = G.muted ? 'none' : '';
+    svg.querySelector('#sndOff').style.display = G.muted ? '' : 'none';
+    svg.style.opacity = G.muted ? 0.55 : 1;
+  }
+}
 const sfxPing = ()  => blip(880, 0.12, 'triangle', 0.05);
 const sfxDrop = ()  => { blip(520, 0.1, 'sine', 0.09); setTimeout(() => blip(780, 0.16, 'sine', 0.09), 90); };
 
@@ -1986,6 +2162,12 @@ const net = {
         G.holeEnding = true;
         setTimeout(() => advanceHole(m.next), 1400);
         break;
+
+      case 'again':
+        // host started another round with the same field
+        G.seed = m.seed;
+        restartRound();
+        break;
     }
   }
 };
@@ -2046,7 +2228,20 @@ document.getElementById('bStart').onclick = () => {
   if (G.roster.length < 1) return;
   startTournament();
 };
-document.getElementById('bHostBack').onclick = () => location.reload();
+document.getElementById('bShare').onclick = async () => {
+  const code = document.getElementById('hostCode').textContent.trim();
+  const link = location.origin + location.pathname + '?room=' + code;
+  const btn = document.getElementById('bShare');
+  try{
+    if (navigator.share){ await navigator.share({ title: 'Mini Golf', text: 'Join my tournament', url: link }); return; }
+    await navigator.clipboard.writeText(link);
+    btn.textContent = 'Link copied!';
+    setTimeout(() => { btn.textContent = 'Copy invite link'; }, 1800);
+  }catch(e){
+    btn.textContent = link;               // clipboard blocked: show it to copy by hand
+  }
+};
+document.getElementById('bHostBack').onclick = () => quitToMenu();
 document.getElementById('bJoinScreen').onclick = () => {
   show('scJoin'); document.getElementById('joinCode').focus();
 };
@@ -2275,6 +2470,20 @@ G.myPid = (() => {
   }catch(e){ return randToken().slice(0, 12); }
 })();
 initProfile();
+try{ setMuted(localStorage.getItem('mg_muted') === '1'); }catch(e){}
+
+// Shared invite link: ?room=CODE drops you straight onto the join screen with
+// the code filled in, so nobody has to read four letters down a phone.
+(function joinFromLink(){
+  const code = new URLSearchParams(location.search).get('room');
+  if (!code || !/^[A-Z2-9]{4}$/i.test(code)) return;
+  show('scJoin');
+  const field = document.getElementById('joinCode');
+  field.value = code.toUpperCase();
+  document.getElementById('joinErr').textContent = 'Joining room ' + field.value + '…';
+  // give the profile a moment so the host sees the right name and ball
+  setTimeout(() => document.getElementById('bJoin').click(), 900);
+})();
 </script>
 </body>
 </html>

@@ -73,6 +73,26 @@ being stored, keeping a row a few KB rather than a few MB.
 The identity lives in `localStorage`, so clearing site data starts a new
 profile. The leaderboard is shared; the identity is not portable across devices.
 
+## Playing
+
+- **Drag anywhere** to aim and pull back; release to putt. Hold **shift** while
+  dragging for fine aim on a long putt.
+- Once your ball is in the hole, **drag to look around** and the camera follows
+  whoever is still playing. The offset eases away as soon as it's your shot
+  again, so you never aim from an off-centre camera.
+- Players who are off-screen show as **edge markers** with their initial and
+  distance — with a big field and the camera on your own ball, they would
+  otherwise be invisible.
+- The roster shows each player's **running total against par**, so the
+  standings are readable mid-round without opening the scorecard.
+- **Invite link:** the host's `Copy invite link` button produces a
+  `?room=CODE` URL that drops someone straight into the join screen with the
+  code filled in.
+- **Play Again** at the end keeps the same room and field — a tournament group
+  never has to re-share a code between rounds.
+- Sound can be muted (remembered), and `prefers-reduced-motion` disables
+  confetti and ball trails.
+
 ## Tuning
 
 The constants at the top of the script are the dials worth touching:
