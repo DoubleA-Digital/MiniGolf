@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Tour Mode — Mini Golf</title>
+<meta name="description" content="Full-swing golf: driver off the tee, irons into the green, then putt it out. Nine generated holes, three-click swing.">
+<meta name="theme-color" content="#2b8438">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M40 10v34' stroke='%23fff' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M40 10l17 5.5L40 21z' fill='%23ff4d4d'/%3E%3Ccircle cx='22' cy='44' r='9' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root{ --ink:#1d2320; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#cdd6c8;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);user-select:none;-webkit-user-select:none}
+  #cv{display:block;position:fixed;inset:0;touch-action:none}
+
+  /* ---------- screens ---------- */
+  .screen{position:fixed;inset:0;z-index:20;
+    background:radial-gradient(120% 80% at 50% 0%,#46b352 0%,#2b8438 45%,#15491f 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;padding:26px;
+    text-align:center;color:#fff;overflow:hidden}
+  .screen::before{content:"";position:absolute;inset:-20%;
+    background:repeating-linear-gradient(180deg,rgba(255,255,255,.045) 0 46px,transparent 46px 92px);
+    pointer-events:none}
+  .screen>*{position:relative}
+  .screen.hide{display:none}
+  .screen h1{margin:0;font-size:40px;font-weight:900;letter-spacing:-1.2px;text-shadow:0 6px 24px rgba(0,0,0,.35)}
+  .screen p{margin:0;opacity:.85;font-size:13.5px;max-width:330px;line-height:1.55}
+  .tagline{display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
+  .tagline span{font-size:9.5px;font-weight:900;letter-spacing:1.1px;padding:4px 9px;border-radius:999px;
+    background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.14)}
+  .btn{pointer-events:auto;border:0;cursor:pointer;background:#fff;color:#14401d;font-weight:900;
+    font-size:16.5px;padding:15px 30px;border-radius:15px;min-width:238px;letter-spacing:.2px;
+    box-shadow:0 4px 0 rgba(0,0,0,.22),0 10px 26px rgba(0,0,0,.18);transition:transform .08s,box-shadow .08s}
+  .btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.22)}
+  .btn.alt{background:rgba(255,255,255,.15);color:#fff;box-shadow:0 4px 0 rgba(0,0,0,.14);
+    border:1px solid rgba(255,255,255,.16)}
+  .btn.mini{min-width:112px;font-size:14px;padding:12px 16px}
+  .minirow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .mechip{position:absolute;top:calc(14px + env(safe-area-inset-top));left:14px;display:flex;
+    align-items:center;gap:9px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.16);
+    border-radius:999px;padding:5px 14px 5px 5px}
+  .meav{width:32px;height:32px;border-radius:50%;overflow:hidden;background:#fff;display:grid;
+    place-items:center;font-size:18px}
+  .meav img{width:100%;height:100%;object-fit:cover;display:block}
+  .meav svg{width:100%;height:100%}
+  .meinfo{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15}
+  .meinfo b{font-size:13px;font-weight:900}
+  .meinfo span{font-size:10.5px;opacity:.8;font-weight:700}
+  .players{display:flex;gap:8px}
+  .pbtn{width:46px;height:46px;border-radius:13px;border:2px solid rgba(255,255,255,.22);
+    background:rgba(255,255,255,.12);color:#fff;font-weight:900;font-size:17px;cursor:pointer}
+  .pbtn.on{background:#fff;color:#14401d;border-color:#fff}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5;display:none}
+  #holebar{position:absolute;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+    background:rgba(18,26,20,.74);color:#fff;border-radius:16px;padding:8px 16px 9px;text-align:center;
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);box-shadow:0 6px 22px rgba(0,0,0,.22)}
+  #holebar b{font-size:14px;font-weight:900;letter-spacing:.6px}
+  #holebar .sub{font-size:11px;font-weight:700;opacity:.8;margin-top:2px}
+  .pips{display:flex;gap:4px;justify-content:center;margin-top:7px}
+  .pips span{width:13px;height:3.5px;border-radius:2px;background:rgba(255,255,255,.24)}
+  .pips span.done{background:rgba(255,255,255,.72)}
+  .pips span.now{background:#ffd23d}
+
+  #whoTurn{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;
+    display:flex;align-items:center;gap:7px;background:rgba(18,26,20,.68);
+    border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:3px 12px 3px 3px;max-width:190px}
+  #whoTurn .av{width:26px;height:26px;border-radius:50%;background:#fff;overflow:hidden;
+    display:grid;place-items:center;font-size:15px;flex:0 0 auto}
+  #whoTurn .av img{width:100%;height:100%;object-fit:cover;display:block}
+  #whoTurn .av svg{width:100%;height:100%}
+  #whoTurn .nm{color:#fff;font-size:12.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #whoTurn .st{color:#fff;font-size:12.5px;font-weight:900;margin-left:auto}
+
+  #info{position:absolute;left:12px;bottom:calc(150px + env(safe-area-inset-bottom));
+    background:rgba(18,26,20,.72);color:#fff;border-radius:14px;padding:9px 13px;backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.09);min-width:132px}
+  #info .row{display:flex;justify-content:space-between;gap:14px;font-size:11.5px;font-weight:700;
+    line-height:1.7;opacity:.85}
+  #info .row b{font-weight:900;opacity:1;font-variant-numeric:tabular-nums}
+  #info .big{font-size:20px;font-weight:900;letter-spacing:-.5px;margin-bottom:2px}
+
+  #wind{position:absolute;right:14px;top:calc(96px + env(safe-area-inset-top));
+    width:74px;height:74px;background:rgba(18,26,20,.72);border-radius:50%;
+    border:1px solid rgba(255,255,255,.1);display:grid;place-items:center;color:#fff}
+  #wind .lbl{position:absolute;bottom:7px;font-size:9px;font-weight:900;letter-spacing:.6px;opacity:.8}
+
+  /* club + swing */
+  #clubbar{position:absolute;left:50%;transform:translateX(-50%);
+    bottom:calc(92px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;
+    pointer-events:auto}
+  .clubnav{width:40px;height:40px;border-radius:12px;background:rgba(18,26,20,.78);color:#fff;border:0;
+    font-size:20px;font-weight:900;cursor:pointer}
+  #clubname{min-width:132px;text-align:center;background:rgba(18,26,20,.78);color:#fff;border-radius:12px;
+    padding:8px 12px;border:1px solid rgba(255,255,255,.1)}
+  #clubname b{display:block;font-size:14px;font-weight:900}
+  #clubname span{display:block;font-size:10px;opacity:.75;font-weight:700}
+
+  #swing{position:absolute;left:50%;transform:translateX(-50%);
+    bottom:calc(24px + env(safe-area-inset-bottom));width:min(420px,86vw);height:54px;
+    background:rgba(18,26,20,.8);border-radius:14px;border:1px solid rgba(255,255,255,.1);
+    pointer-events:auto;cursor:pointer;overflow:hidden}
+  #swingHint{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:13px;
+    font-weight:800;letter-spacing:.3px;pointer-events:none}
+  #swingCv{position:absolute;inset:0;width:100%;height:100%}
+
+  .iconbtn{position:absolute;width:44px;height:44px;border-radius:12px;background:rgba(18,26,20,.72);
+    color:#fff;border:0;display:grid;place-items:center;pointer-events:auto;cursor:pointer;
+    backdrop-filter:blur(6px)}
+  .iconbtn svg{width:22px;height:22px}
+  #btnCard{right:14px;bottom:calc(20px + env(safe-area-inset-bottom))}
+  #btnAimL{left:14px;bottom:calc(20px + env(safe-area-inset-bottom))}
+  #btnAimR{left:66px;bottom:calc(20px + env(safe-area-inset-bottom))}
+  #btnQuit{right:14px;top:calc(12px + env(safe-area-inset-top))}
+  #btnOver{right:14px;bottom:calc(74px + env(safe-area-inset-bottom))}
+
+  #toast{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%) scale(.85);
+    background:rgba(18,26,20,.92);color:#fff;padding:15px 28px;border-radius:19px;font-size:24px;
+    font-weight:900;opacity:0;transition:opacity .2s,transform .22s cubic-bezier(.2,1.3,.4,1);
+    text-align:center;white-space:nowrap;border:1px solid rgba(255,255,255,.12)}
+  #toast.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  #toast.good{color:#ffd86b}
+  #toast small{display:block;font-size:12.5px;font-weight:700;opacity:.75;margin-top:4px;color:#fff}
+
+  /* ---------- scorecard ---------- */
+  #card{position:fixed;inset:0;z-index:30;background:rgba(10,14,12,.86);display:flex;
+    align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px)}
+  #card.hide{display:none}
+  .cardbox{background:#fff;border-radius:20px;padding:18px;width:100%;max-width:440px;color:#1d2320;
+    box-shadow:0 20px 50px rgba(0,0,0,.4)}
+  .cardbox h2{margin:0 0 12px;font-size:20px;text-align:center;font-weight:900;letter-spacing:-.3px}
+  table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  th,td{padding:7px 2px;text-align:center}
+  thead th{font-size:11px;color:#7d8680;font-weight:800;border-bottom:2px solid #eceeeb}
+  tbody td{border-bottom:1px solid #f2f4f1}
+  tbody tr td:first-child{text-align:left;font-weight:800;padding-left:6px}
+  td.tot{font-weight:900;background:#f4f6f3;border-radius:6px}
+  .u{color:#d64545;font-weight:800}
+  .o{color:#3b7ad6;font-weight:800}
+  .par-row td{color:#7d8680;font-weight:700}
+  tbody tr.mine td{background:rgba(255,210,61,.16)}
+  .cardbtns{display:flex;gap:9px;margin-top:14px}
+  .cardbtns .btn{flex:1;min-width:0;font-size:15px;padding:13px 10px}
+  .btn.dark{background:#2f9a3a;color:#fff;box-shadow:0 4px 0 rgba(0,0,0,.18)}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<!-- ================= HUD ================= -->
+<div id="hud">
+  <div id="whoTurn"><span class="av"></span><span class="nm">You</span><span class="st">0</span></div>
+
+  <div id="holebar">
+    <b id="hbHole">HOLE 1</b>
+    <div class="sub"><span id="hbPar">PAR 4</span> · <span id="hbYds">412 yds</span> · <span id="hbTot">E</span></div>
+    <div class="pips" id="hbPips"></div>
+  </div>
+
+  <div id="wind">
+    <svg viewBox="0 0 64 64" width="44" height="44" id="windArrow">
+      <path d="M32 10 L40 34 L32 29 L24 34 Z" fill="#fff"/>
+    </svg>
+    <span class="lbl" id="windLbl">0 mph</span>
+  </div>
+
+  <div id="info">
+    <div class="big" id="infoDist">412<span style="font-size:12px;opacity:.7"> yds</span></div>
+    <div class="row"><span>Lie</span><b id="infoLie">Tee</b></div>
+    <div class="row"><span>Stroke</span><b id="infoStroke">1</b></div>
+  </div>
+
+  <div id="clubbar">
+    <button class="clubnav" id="clubDown">‹</button>
+    <div id="clubname"><b>Driver</b><span>265 yds</span></div>
+    <button class="clubnav" id="clubUp">›</button>
+  </div>
+
+  <div id="swing"><canvas id="swingCv"></canvas><div id="swingHint">Tap to start your swing</div></div>
+
+  <button class="iconbtn" id="btnAimL" title="Aim left">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+  </button>
+  <button class="iconbtn" id="btnAimR" title="Aim right">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+  </button>
+  <button class="iconbtn" id="btnCard" title="Scorecard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+  </button>
+  <button class="iconbtn" id="btnOver" title="View whole hole">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4"/><path d="M20 9V5a1 1 0 0 0-1-1h-4"/><path d="M4 15v4a1 1 0 0 0 1 1h4"/><path d="M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
+  </button>
+  <button class="iconbtn" id="btnQuit" title="Leave round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+  </button>
+
+  <div id="toast"></div>
+</div>
+
+<!-- ================= MENU ================= -->
+<div class="screen" id="scMenu">
+  <div id="meChip" class="mechip"></div>
+  <h1>TOUR MODE</h1>
+  <div class="tagline"><span>DRIVER</span><span>IRONS</span><span>PUTTER</span><span>9 HOLES</span></div>
+  <p>Full-swing golf. Three-click swing off the tee, pick your iron into the green, then read the putt. Wind and the lie both matter.</p>
+  <div>
+    <div style="font-size:10.5px;font-weight:900;letter-spacing:1px;opacity:.75;margin-bottom:7px">PLAYERS</div>
+    <div class="players" id="playerPick"></div>
+  </div>
+  <button class="btn" id="bPlay">Start Round</button>
+  <button class="btn alt" id="bBackMini">Back to Mini Golf</button>
+</div>
+
+<!-- ================= SCORECARD ================= -->
+<div id="card" class="hide">
+  <div class="cardbox">
+    <h2 id="cardTitle">Scorecard</h2>
+    <table><thead><tr id="cardHead"></tr></thead><tbody id="cardBody"></tbody></table>
+    <div class="cardbtns">
+      <button class="btn dark" id="bAgain">Play Again</button>
+      <button class="btn alt" id="bClose" style="background:#e9ede8;color:#2a352c;border:0">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   PROFILE — shared with Mini Golf (same localStorage key and the
+   same Supabase RPCs), so your name, picture and points carry over.
+   ============================================================ */
+const SUPA_URL = 'https://esogrnjilzxcmvgpieib.supabase.co';
+const SUPA_KEY = 'sb_publishable__QUefxDt7tRi9Y943QK7yw_ivbRt71u';
+
+async function rpc(fn, args, timeoutMs){
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs || 9000);
+  try{
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST', signal: ac.signal,
+      headers: { 'apikey': SUPA_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args || {})
+    });
+    if (!r.ok) throw new Error(fn + ' ' + r.status);
+    return await r.json();
+  } finally { clearTimeout(timer); }
+}
+
+const profile = { id:null, token:null, name:'Player', avatar:'golf', avatarImg:null,
+                  points:0, online:false };
+function loadProfile(){
+  try{
+    const raw = localStorage.getItem('mg_profile');
+    if (raw) Object.assign(profile, JSON.parse(raw));
+  }catch(e){}
+}
+function saveProfile(){
+  try{
+    const raw = localStorage.getItem('mg_profile');
+    const cur = raw ? JSON.parse(raw) : {};
+    localStorage.setItem('mg_profile', JSON.stringify(Object.assign(cur, {
+      id: profile.id, token: profile.token, name: profile.name,
+      avatar: profile.avatar, avatarImg: profile.avatarImg, points: profile.points
+    })));
+  }catch(e){}
+}
+async function refreshProfile(){
+  loadProfile();
+  try{
+    if (profile.id && profile.token){
+      const rows = await rpc('mg_get_profile', { p_id: profile.id, p_token: profile.token });
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      if (row){
+        profile.name = row.name; profile.avatar = row.avatar;
+        profile.avatarImg = row.avatar_img; profile.points = row.points;
+      }
+      profile.online = true;
+    }
+  }catch(e){ profile.online = false; }
+  saveProfile(); paintChip();
+}
+const escapeHTML = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+function avatarHTML(r){
+  if (r && r.avatarImg) return `<img src="${escapeHTML(r.avatarImg)}" alt="">`;
+  const a = r && r.avatar;
+  if (!a || a === 'golf') return '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#fff"/>' +
+    '<circle cx="9.4" cy="9.4" r="2" fill="rgba(0,0,0,.09)"/></svg>';
+  return escapeHTML(a);
+}
+function paintChip(){
+  const el = document.getElementById('meChip');
+  el.innerHTML = `<div class="meav">${avatarHTML(profile)}</div>
+    <div class="meinfo"><b>${escapeHTML(profile.name)}</b>
+    <span>${profile.points} pts${profile.online ? '' : ' · offline'}</span></div>`;
+}
+
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+const HOLES = 9;
+const PARS  = [4, 3, 5, 4, 4, 3, 5, 4, 4];   // a real card's rhythm
+
+// carry = yards at a perfect 100% swing; roll = fraction of carry it runs on
+// landing; loft raises the flight arc and reduces sidespin.
+const CLUBS = [
+  { id:'D',  name:'Driver',        carry:270, roll:0.24, loft:0.45 },
+  { id:'3W', name:'3 Wood',        carry:240, roll:0.22, loft:0.55 },
+  { id:'5W', name:'5 Wood',        carry:215, roll:0.19, loft:0.62 },
+  { id:'4i', name:'4 Iron',        carry:195, roll:0.16, loft:0.70 },
+  { id:'6i', name:'6 Iron',        carry:172, roll:0.13, loft:0.78 },
+  { id:'8i', name:'8 Iron',        carry:148, roll:0.10, loft:0.86 },
+  { id:'PW', name:'Pitching Wedge',carry:122, roll:0.07, loft:0.93 },
+  { id:'SW', name:'Sand Wedge',    carry:92,  roll:0.05, loft:1.00 },
+  { id:'LW', name:'Lob Wedge',     carry:64,  roll:0.03, loft:1.06 },
+  { id:'P',  name:'Putter',        carry:0,   roll:0,    loft:0 }
+];
+const PUTTER = CLUBS.length - 1;
+
+const LIE_POWER = { tee:1.00, fairway:1.00, green:1.00, fringe:0.95,
+                    rough:0.82, deep:0.68, bunker:0.62, trees:0.70 };
+const LIE_NAME  = { tee:'Tee', fairway:'Fairway', green:'Green', fringe:'Fringe',
+                    rough:'Rough', deep:'Deep rough', bunker:'Bunker',
+                    trees:'Trees', water:'Water', ob:'Out of bounds' };
+
+const SPRAY_MAX  = 0.195;    // radians of push/pull at worst accuracy
+const STROKE_CAP = 12;
+
+const SCORE_NAMES = { '-3':'Albatross', '-2':'Eagle', '-1':'Birdie', '0':'Par',
+                      '1':'Bogey', '2':'Double Bogey', '3':'Triple Bogey' };
+
+/* ============================================================
+   SEEDED RNG
+   ============================================================ */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ============================================================
+   HOLE GENERATION
+   Everything is in yards. The hole runs "up" the screen: the tee sits
+   at (0,0) and the green is at negative y, with doglegs offsetting x.
+   Terrain is analytic (a centreline corridor plus circles) rather than
+   a tile grid — it suits long holes far better.
+   ============================================================ */
+function genHole(seed, par){
+  const rnd = mulberry32(seed >>> 0);
+  const ri = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
+
+  const length = par === 3 ? ri(145, 205)
+               : par === 4 ? ri(330, 430)
+                           : ri(480, 565);
+
+  // centreline: tee -> (optional dogleg) -> green
+  const pts = [{ x: 0, y: 0 }];
+  const bend = par === 3 ? 0 : (rnd() < 0.55 ? (rnd() < 0.5 ? -1 : 1) : 0);
+  if (bend){
+    const at = 0.45 + rnd() * 0.2;
+    const off = (18 + rnd() * 30) * bend;
+    pts.push({ x: off * 0.55, y: -length * at * 0.8 });
+    pts.push({ x: off,        y: -length * at });
+  }
+  pts.push({ x: bend ? bend * (6 + rnd() * 14) : 0, y: -length });
+
+  const width = par === 3 ? 34 : (30 + rnd() * 16);     // half-width of fairway
+  const greenC = pts[pts.length - 1];
+  const greenR = par === 3 ? 15 + rnd() * 4 : 13 + rnd() * 6;
+  const pinAng = rnd() * Math.PI * 2, pinOff = greenR * (0.15 + rnd() * 0.42);
+  const pin = { x: greenC.x + Math.cos(pinAng) * pinOff,
+                y: greenC.y + Math.sin(pinAng) * pinOff };
+
+  // hazards along the way
+  const onLine = t => {                       // point a fraction t down the hole
+    const yy = -length * t;
+    return { x: xAt(pts, yy), y: yy };
+  };
+  const bunkers = [], water = [], trees = [];
+  const nB = par === 3 ? ri(1, 2) : ri(2, 4);
+  for (let i = 0; i < nB; i++){
+    const t = par === 3 ? 0.86 + rnd() * 0.12 : 0.30 + rnd() * 0.66;
+    const c = onLine(t);
+    const side = rnd() < 0.5 ? -1 : 1;
+    const r = 7 + rnd() * 7;
+    bunkers.push({ x: c.x + side * (width * (0.55 + rnd() * 0.55)), y: c.y, r });
+  }
+  if (par !== 3 && rnd() < 0.5){
+    const t = 0.45 + rnd() * 0.35;
+    const c = onLine(t);
+    const side = rnd() < 0.5 ? -1 : 1;
+    water.push({ x: c.x + side * (width * (0.8 + rnd() * 0.5)), y: c.y, r: 13 + rnd() * 12 });
+  }
+  const nT = ri(4, 9);
+  for (let i = 0; i < nT; i++){
+    const t = 0.18 + rnd() * 0.75;
+    const c = onLine(t);
+    const side = rnd() < 0.5 ? -1 : 1;
+    trees.push({ x: c.x + side * (width + 14 + rnd() * 26), y: c.y + (rnd() - 0.5) * 40,
+                 r: 6 + rnd() * 5 });
+  }
+
+  return { par, length, pts, width, greenC, greenR, pin, bunkers, water, trees,
+           wind: { dir: rnd() * Math.PI * 2, mph: Math.round(rnd() * 14) } };
+}
+
+// x of the centreline at a given y (linear interpolation between nodes)
+function xAt(pts, y){
+  for (let i = 0; i < pts.length - 1; i++){
+    const a = pts[i], b = pts[i + 1];
+    if (y <= a.y && y >= b.y){
+      const f = (a.y - y) / (a.y - b.y || 1);
+      return a.x + (b.x - a.x) * f;
+    }
+  }
+  return y > pts[0].y ? pts[0].x : pts[pts.length - 1].x;
+}
+function distToCentre(h, p){
+  // distance to the centreline polyline
+  let best = 1e9;
+  for (let i = 0; i < h.pts.length - 1; i++){
+    const a = h.pts[i], b = h.pts[i + 1];
+    const vx = b.x - a.x, vy = b.y - a.y;
+    const L2 = vx * vx + vy * vy || 1;
+    let t = ((p.x - a.x) * vx + (p.y - a.y) * vy) / L2;
+    t = Math.max(0, Math.min(1, t));
+    const dx = p.x - (a.x + vx * t), dy = p.y - (a.y + vy * t);
+    best = Math.min(best, Math.hypot(dx, dy));
+  }
+  return best;
+}
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function lieAt(h, p){
+  const dg = dist(p, h.greenC);
+  if (dg <= h.greenR) return 'green';
+  for (const w of h.water)  if (dist(p, w) <= w.r) return 'water';
+  for (const b of h.bunkers) if (dist(p, b) <= b.r) return 'bunker';
+  if (dg <= h.greenR + 5) return 'fringe';
+  for (const t of h.trees) if (dist(p, t) <= t.r) return 'trees';
+  if (p.y > 14 || p.y < -h.length - 55) return 'ob';
+  const d = distToCentre(h, p);
+  if (d <= h.width) return 'fairway';
+  if (d <= h.width + 22) return 'rough';
+  if (d <= h.width + 52) return 'deep';
+  return 'ob';
+}
+
+/* ============================================================
+   GAME STATE
+   ============================================================ */
+const G = {
+  mode: 'menu',
+  seed: 0,
+  hole: 0,
+  h: null,
+  players: [],
+  turn: 0,
+  club: 0,
+  aim: 0,             // radians, 0 = straight up the hole from the ball
+  swing: { phase: 'idle', t: 0, power: 0, dir: 1 },
+  flight: null,       // animation of the current shot
+  putt: null,         // rolling putt simulation
+  overview: false,
+  msg: '',
+  lastPoints: 0
+};
+function newPlayer(name, opts){
+  return { name, avatar: (opts && opts.avatar) || 'golf',
+           avatarImg: (opts && opts.avatarImg) || null,
+           scores: new Array(HOLES).fill(null), strokes: 0, holed: false,
+           ball: { x: 0, y: 0 }, lie: 'tee' };
+}
+const me = () => G.players[G.turn];
+
+/* ============================================================
+   CANVAS + CAMERA  (camera works in yards)
+   ============================================================ */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let VW = 0, VH = 0, DPR = 1;
+const cam = { x: 0, y: 0, scale: 3, tx: 0, ty: 0, ts: 3 };
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  VW = window.innerWidth; VH = window.innerHeight;
+  cv.width = Math.round(VW * DPR); cv.height = Math.round(VH * DPR);
+  cv.style.width = VW + 'px'; cv.style.height = VH + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const w2s = p => ({ x: (p.x - cam.x) * cam.scale + VW / 2,
+                    y: (p.y - cam.y) * cam.scale + VH / 2 });
+
+function updateCamera(dt){
+  const h = G.h;
+  if (!h) return;
+  const b = G.flight ? G.flight.pos : (G.putt ? G.putt.pos : me().ball);
+
+  if (G.overview){
+    // extra room at the top so the green clears the hole banner, and the
+    // centre is nudged up the hole so the pin is never tucked behind it
+    const padX = 90, padY = 125;
+    const sx = VW / (h.width * 2 + padX * 2);
+    const sy = VH / (h.length + padY * 2);
+    cam.ts = Math.min(sx, sy);
+    cam.tx = xAt(h.pts, -h.length / 2); cam.ty = -h.length / 2 - 26;
+  } else if (me().lie === 'green' || G.putt){
+    // putting: tight on the green so you can read the line
+    cam.ts = Math.min(VW, VH) / (h.greenR * 2.6);
+    cam.tx = (b.x + h.pin.x) / 2; cam.ty = (b.y + h.pin.y) / 2;
+  } else {
+    // full shot: frame the ball and roughly where it is going
+    const d = dist(b, h.pin);
+    const look = Math.min(d, CLUBS[G.club].carry * 1.15 + 30);
+    const ahead = { x: b.x + Math.sin(aimWorld()) * look * 0.55,
+                    y: b.y - Math.cos(aimWorld()) * look * 0.55 };
+    cam.tx = (b.x + ahead.x) / 2; cam.ty = (b.y + ahead.y) / 2;
+    cam.ts = Math.min(VW / 190, VH / (look * 1.25 + 60));
+    cam.ts = Math.max(cam.ts, 0.9);
+  }
+  const k = 1 - Math.pow(0.004, dt);
+  cam.x += (cam.tx - cam.x) * k;
+  cam.y += (cam.ty - cam.y) * k;
+  cam.scale += (cam.ts - cam.scale) * k;
+}
+
+// aim is relative to the line from the ball to the pin
+function aimWorld(){
+  const b = me().ball, h = G.h;
+  const base = Math.atan2(h.pin.x - b.x, -(h.pin.y - b.y));
+  return base + G.aim;
+}
+
+/* ============================================================
+   SHOT MODEL
+   ============================================================ */
+function suggestClub(){
+  const d = dist(me().ball, G.h.pin);
+  if (me().lie === 'green') return PUTTER;
+  if (me().lie === 'bunker' && d < 110) return 7;          // sand wedge
+  let best = 0, bestGap = 1e9;
+  for (let i = 0; i < PUTTER; i++){
+    const reach = CLUBS[i].carry * (LIE_POWER[me().lie] ?? 0.8) * (1 + CLUBS[i].roll);
+    const gap = Math.abs(reach - d);
+    if (gap < bestGap){ bestGap = gap; best = i; }
+  }
+  return best;
+}
+
+function windEffect(h, ang){
+  // along-wind stretches or shortens the carry; cross-wind drifts it
+  const wx = Math.cos(h.wind.dir), wy = Math.sin(h.wind.dir);
+  const fx = Math.sin(ang), fy = -Math.cos(ang);
+  const along = wx * fx + wy * fy;
+  const cross = wx * fy - wy * fx;
+  return { along, cross };
+}
+
+function takeSwing(power, accuracy){
+  const p = me(), h = G.h;
+  const club = CLUBS[G.club];
+  p.strokes++;
+
+  if (G.club === PUTTER){ startPutt(power, accuracy); return; }
+
+  const lieMod = LIE_POWER[p.lie] ?? 0.8;
+  const w = windEffect(h, aimWorld());
+  const windCarry = 1 + w.along * h.wind.mph * 0.0042 * (1.15 - club.loft * 0.5);
+
+  let carry = club.carry * power * lieMod * windCarry;
+  // a mishit leaks distance too, not just direction
+  carry *= 1 - Math.min(0.28, Math.abs(accuracy) * 0.30);
+  // a bunker or trees also knocks the flight down
+  if (p.lie === 'bunker' || p.lie === 'trees') carry *= 0.92;
+
+  // accuracy: sidespin, softened by loft (a wedge sprays less than a driver)
+  const spray = accuracy * SPRAY_MAX * (1.25 - club.loft * 0.55);
+  const drift = w.cross * h.wind.mph * 0.16 * (1.1 - club.loft * 0.4);
+  const ang = aimWorld() + spray;
+
+  const from = { x: p.ball.x, y: p.ball.y };
+  const land = { x: from.x + Math.sin(ang) * carry + Math.cos(ang) * drift,
+                 y: from.y - Math.cos(ang) * carry + Math.sin(ang) * drift };
+
+  // run-out depends on what it lands on
+  const landLie = lieAt(h, land);
+  const rollMod = { fairway:1, tee:1, green:0.55, fringe:0.7, rough:0.3,
+                    deep:0.15, bunker:0.06, trees:0.12, water:0, ob:0.4 }[landLie] ?? 0.4;
+  const rollDist = carry * club.roll * rollMod;
+  const rest = { x: land.x + Math.sin(ang) * rollDist,
+                 y: land.y - Math.cos(ang) * rollDist };
+
+  G.flight = { from, land, rest, t: 0,
+               dur: Math.max(0.75, Math.min(2.4, carry / 150)),
+               apex: Math.min(48, carry * 0.13 * (0.6 + club.loft * 0.7)),
+               pos: { x: from.x, y: from.y }, phase: 'air' };
+  sfxHit(power);
+  updateHUD();
+}
+
+function finishShot(rest){
+  const p = me(), h = G.h;
+  let lie = lieAt(h, rest);
+
+  if (lie === 'water'){
+    p.strokes++;                                   // penalty stroke
+    const back = nearestDryBefore(h, rest);
+    p.ball = back; p.lie = lieAt(h, back);
+    toast('Water', '+1 penalty stroke');
+  } else if (lie === 'ob'){
+    p.strokes++;
+    const back = nearestDryBefore(h, rest);
+    p.ball = back; p.lie = lieAt(h, back);
+    toast('Out of bounds', '+1 penalty stroke');
+  } else {
+    p.ball = rest; p.lie = lie;
+  }
+
+  const d = dist(p.ball, h.pin);
+  if (p.lie === 'green' && d < 0.9){ holeOut(); return; }
+  if (p.strokes >= STROKE_CAP){ pickUp(); return; }
+
+  G.club = suggestClub();
+  G.aim = 0;
+  updateHUD();
+}
+
+// walk back along the line toward the tee until the ground is playable
+function nearestDryBefore(h, p){
+  const teeSide = { x: xAt(h.pts, Math.min(0, p.y + 30)), y: Math.min(0, p.y + 30) };
+  for (let i = 1; i <= 40; i++){
+    const f = i / 40;
+    const q = { x: p.x + (teeSide.x - p.x) * f, y: p.y + (teeSide.y - p.y) * f };
+    const l = lieAt(h, q);
+    if (l !== 'water' && l !== 'ob') return q;
+  }
+  return { x: xAt(h.pts, -h.length * 0.5), y: -h.length * 0.5 };
+}
+
+/* ---------- putting ---------- */
+const PUTT_FRIC = 1.9;                           // yards/s^2 of deceleration
+
+function startPutt(power, accuracy){
+  const p = me(), h = G.h;
+  const d = dist(p.ball, h.pin);
+  // Power is read as a fraction of the distance to the hole, so the meter means
+  // the same thing on a 2-yard tap as on a 20-yard lag. ~0.75 is dead weight.
+  const reach = Math.max(0.4, d * (0.18 + power * 1.12));
+  // A misread costs more the longer the putt — a 2-yard tap forgives almost
+  // anything, a 20-yard lag does not.
+  const ang = aimWorld() + accuracy * (0.03 + d * 0.0024);
+  // v must satisfy v^2 = 2*a*reach, or the ball travels nothing like the
+  // distance the meter promised.
+  const speed = Math.sqrt(2 * PUTT_FRIC * reach);
+  G.putt = { pos: { x: p.ball.x, y: p.ball.y },
+             v: { x: Math.sin(ang) * speed, y: -Math.cos(ang) * speed },
+             t: 0 };
+  sfxPutt();
+  updateHUD();
+}
+function stepPutt(dt){
+  const s = G.putt, h = G.h;
+  let sp = Math.hypot(s.v.x, s.v.y);
+  if (sp > 0){
+    const drop = Math.min(sp, PUTT_FRIC * dt * (lieAt(h, s.pos) === 'green' ? 1 : 2.6));
+    s.v.x -= s.v.x / sp * drop; s.v.y -= s.v.y / sp * drop;
+  }
+  s.pos.x += s.v.x * dt; s.pos.y += s.v.y * dt;
+  s.t += dt;
+
+  // cup capture: slow enough and close enough
+  const d = dist(s.pos, h.pin);
+  sp = Math.hypot(s.v.x, s.v.y);
+  if (d < 0.6 && sp < 2.4){ G.putt = null; me().ball = { x: h.pin.x, y: h.pin.y }; holeOut(); return; }
+
+  if (sp < 0.25 || s.t > 12){
+    const rest = { x: s.pos.x, y: s.pos.y };
+    G.putt = null;
+    finishShot(rest);
+  }
+}
+
+/* ---------- hole completion ---------- */
+function holeOut(){
+  const p = me(), h = G.h;
+  p.holed = true;
+  p.scores[G.hole] = p.strokes;
+  const rel = p.strokes - h.par;
+  toast(p.strokes === 1 ? 'Hole in One!' : (SCORE_NAMES[rel] || `+${rel}`),
+        `${p.name} · ${p.strokes} stroke${p.strokes > 1 ? 's' : ''}`, rel < 0 ? 'good' : '');
+  sfxDrop();
+  setTimeout(nextTurn, 1500);
+  updateHUD();
+}
+function pickUp(){
+  const p = me();
+  p.holed = true;
+  p.scores[G.hole] = STROKE_CAP;
+  toast('Picked up', `${p.name} · ${STROKE_CAP}`);
+  setTimeout(nextTurn, 1400);
+}
+
+function nextTurn(){
+  // each player plays the hole out, then it passes on
+  const next = G.players.findIndex((p, i) => i > G.turn && !p.holed);
+  if (next >= 0){ G.turn = next; startLie(); return; }
+  if (G.hole >= HOLES - 1){ endRound(); return; }
+  G.hole++;
+  loadHole();
+}
+
+function startLie(){
+  const p = me(), h = G.h;
+  p.ball = { x: xAt(h.pts, 0), y: 0 };
+  p.lie = 'tee';
+  p.strokes = 0;
+  G.club = suggestClub();
+  G.aim = 0;
+  G.overview = true;
+  setTimeout(() => { G.overview = false; }, 1500);
+  updateHUD();
+  toast(`Hole ${G.hole + 1}`, `Par ${h.par} · ${h.length} yds · ${p.name}`);
+}
+
+function loadHole(){
+  G.h = genHole(G.seed + G.hole * 7919, PARS[G.hole]);
+  G.players.forEach(p => { p.holed = false; p.strokes = 0; });
+  G.turn = 0;
+  startLie();
+}
+
+function endRound(){
+  G.mode = 'over';
+  awardPoints();
+  showCard(true);
+}
+
+async function awardPoints(){
+  const board = standings();
+  const rank = board.findIndex(e => e.p === G.players[0]);
+  const n = board.length;
+  const placement = n > 1 ? Math.round(100 * (n - 1 - rank) / (n - 1)) : 60;
+  const under = G.players[0].scores.reduce((a, s, h) =>
+    a + (s !== null && s < PARS[h] ? 1 : 0), 0);
+  const gained = 25 + placement + under * 8;
+  G.lastPoints = gained;
+  profile.points += gained;
+  saveProfile(); paintChip();
+  if (profile.online && profile.id){
+    try{
+      const pts = await rpc('mg_award_points',
+        { p_id: profile.id, p_token: profile.token, p_points: gained, p_won: rank === 0 });
+      if (typeof pts === 'number' && pts >= 0){ profile.points = pts; saveProfile(); paintChip(); }
+    }catch(e){}
+  }
+}
+function standings(){
+  return G.players
+    .map(p => ({ p, total: p.scores.reduce((a, b) => a + (b ?? 0), 0) }))
+    .sort((a, b) => a.total - b.total);
+}
+
+/* ============================================================
+   SWING METER — the PGA Tour 98 three-click swing.
+   Click once to start the sweep, again to set power, a third time on
+   the way back to set accuracy. Stopping dead on the line is perfect.
+   ============================================================ */
+const SWING_UP = 1.35, SWING_BACK = 1.05;   // sweep speeds (fraction/second)
+const swingCv = document.getElementById('swingCv');
+const swingCtx = swingCv.getContext('2d');
+let swW = 0, swH = 0;
+
+function sizeSwing(){
+  const r = swingCv.getBoundingClientRect();
+  swW = r.width; swH = r.height;
+  swingCv.width = Math.round(swW * DPR); swingCv.height = Math.round(swH * DPR);
+  swingCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', sizeSwing);
+
+function swingClick(){
+  if (!canSwing()) return;
+  const s = G.swing;
+  if (s.phase === 'idle'){ s.phase = 'power'; s.t = 0; }
+  else if (s.phase === 'power'){ s.power = Math.max(0.05, s.t); s.phase = 'accuracy'; }
+  else if (s.phase === 'accuracy'){ fireSwing(s.t); }
+}
+function fireSwing(acc){
+  const s = G.swing;
+  s.phase = 'idle';
+  // acc is where the marker was when stopped; 0 is dead on the line
+  takeSwing(s.power, Math.max(-1, Math.min(1, acc / 0.115)));
+  s.t = 0; s.power = 0;
+}
+function stepSwing(dt){
+  const s = G.swing;
+  if (s.phase === 'power'){
+    s.t += SWING_UP * dt;
+    if (s.t >= 1){ s.t = 1; s.power = 1; s.phase = 'accuracy'; }
+  } else if (s.phase === 'accuracy'){
+    s.t -= SWING_BACK * dt;
+    if (s.t <= -0.16) fireSwing(-0.16);          // missed it entirely: big hook
+  }
+}
+const canSwing = () =>
+  G.mode === 'play' && !G.flight && !G.putt && me() && !me().holed;
+
+function drawSwing(){
+  if (!swW) sizeSwing();
+  const g = swingCtx, s = G.swing;
+  g.clearRect(0, 0, swW, swH);
+  const padX = 16, barW = swW - padX * 2, y = swH / 2, h = 16;
+  const zero = padX + barW * 0.14;               // the accuracy line
+  const full = padX + barW;
+
+  // track
+  g.fillStyle = 'rgba(255,255,255,.12)';
+  g.beginPath(); g.roundRect(padX, y - h / 2, barW, h, h / 2); g.fill();
+
+  // power fill
+  const px = zero + (full - zero) * (s.phase === 'idle' ? 0 : Math.max(0, s.power || s.t));
+  const grad = g.createLinearGradient(zero, 0, full, 0);
+  grad.addColorStop(0, '#5ee06a'); grad.addColorStop(0.6, '#ffd23d'); grad.addColorStop(1, '#ff5252');
+  g.fillStyle = grad;
+  g.beginPath(); g.roundRect(zero, y - h / 2, Math.max(0, px - zero), h, h / 2); g.fill();
+
+  // accuracy zone
+  g.fillStyle = 'rgba(255,255,255,.22)';
+  g.fillRect(zero - barW * 0.14, y - h / 2 - 5, barW * 0.14, h + 10);
+  g.strokeStyle = '#fff'; g.lineWidth = 2.5;
+  g.beginPath(); g.moveTo(zero, y - h / 2 - 8); g.lineTo(zero, y + h / 2 + 8); g.stroke();
+
+  // marker
+  if (s.phase !== 'idle'){
+    const mx = zero + (full - zero) * s.t;
+    g.fillStyle = '#fff';
+    g.beginPath(); g.roundRect(mx - 2.5, y - h / 2 - 9, 5, h + 18, 2.5); g.fill();
+  }
+  // labels
+  g.fillStyle = 'rgba(255,255,255,.55)';
+  g.font = '700 9px system-ui, sans-serif'; g.textAlign = 'center';
+  g.fillText('ACCURACY', zero - barW * 0.07, y + h / 2 + 20);
+  g.fillText('POWER', (zero + full) / 2, y - h / 2 - 12);
+  g.textAlign = 'start';
+
+  const hint = document.getElementById('swingHint');
+  hint.style.display = s.phase === 'idle' ? '' : 'none';
+  if (s.phase === 'idle'){
+    hint.textContent = !canSwing() ? '' :
+      (G.club === PUTTER ? 'Tap to start your putt' : 'Tap to start your swing');
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function draw(){
+  const bg = ctx.createLinearGradient(0, 0, 0, VH);
+  bg.addColorStop(0, '#d7dfd2'); bg.addColorStop(1, '#c2cbbd');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, VW, VH);
+  if (!G.h) return;
+  const h = G.h, S = cam.scale;
+
+  const yd = n => n * S;
+  const P = p => w2s(p);
+
+  // ---- rough band, then fairway corridor, as thick strokes along the line ----
+  const linePath = (wYd) => {
+    ctx.beginPath();
+    for (let i = 0; i < h.pts.length; i++){
+      const s = P(h.pts[i]);
+      if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+    }
+    ctx.lineWidth = yd(wYd * 2); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  };
+  linePath(h.width + 52); ctx.strokeStyle = '#3c7a3f'; ctx.stroke();
+  linePath(h.width + 22); ctx.strokeStyle = '#46934a'; ctx.stroke();
+  linePath(h.width);      ctx.strokeStyle = '#57b45c'; ctx.stroke();
+
+  // Mown stripes, clipped to the fairway itself. Compositing with
+  // 'source-atop' painted them over everything already on the canvas.
+  ctx.save();
+  ctx.beginPath();
+  const edge = (sign) => {
+    for (let i = 0; i < h.pts.length; i++){
+      const a = h.pts[i];
+      const b = h.pts[Math.min(i + 1, h.pts.length - 1)];
+      const c = h.pts[Math.max(i - 1, 0)];
+      let vx = b.x - c.x, vy = b.y - c.y;
+      const L = Math.hypot(vx, vy) || 1;
+      const nx = -vy / L * h.width * sign, ny = vx / L * h.width * sign;
+      const s2 = P({ x: a.x + nx, y: a.y + ny });
+      if (i === 0 && sign > 0) ctx.moveTo(s2.x, s2.y); else ctx.lineTo(s2.x, s2.y);
+    }
+  };
+  edge(1); edge(-1); ctx.closePath(); ctx.clip();
+  ctx.strokeStyle = '#000';
+  for (let y = 0; y > -h.length - 20; y -= 18){
+    if ((Math.round(-y / 18)) % 2 === 0) continue;
+    const a = P({ x: -240, y }), b = P({ x: 240, y });
+    ctx.globalAlpha = 0.05;
+    ctx.lineWidth = yd(18); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  ctx.restore();
+
+  // ---- water ----
+  for (const w of h.water){
+    const c = P(w);
+    ctx.fillStyle = '#3f9fdc';
+    ctx.beginPath(); ctx.arc(c.x, c.y, yd(w.r), 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = Math.max(1, yd(0.7));
+    ctx.beginPath(); ctx.arc(c.x, c.y, yd(w.r) - 3, 0.6, 2.2); ctx.stroke();
+  }
+  // ---- bunkers ----
+  for (const b of h.bunkers){
+    const c = P(b);
+    ctx.fillStyle = '#e3d5a4';
+    ctx.beginPath(); ctx.arc(c.x, c.y, yd(b.r), 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(160,140,90,.5)'; ctx.lineWidth = Math.max(1, yd(0.5));
+    ctx.stroke();
+  }
+
+  // ---- green ----
+  const gc = P(h.greenC);
+  ctx.fillStyle = '#74d178';
+  ctx.beginPath(); ctx.arc(gc.x, gc.y, yd(h.greenR), 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = Math.max(1, yd(0.6));
+  ctx.stroke();
+
+  // ---- pin ----
+  const pin = P(h.pin);
+  ctx.fillStyle = 'rgba(20,50,22,.85)';
+  ctx.beginPath(); ctx.arc(pin.x, pin.y, Math.max(2.5, yd(0.55)), 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(pin.x, pin.y); ctx.lineTo(pin.x, pin.y - 26); ctx.stroke();
+  ctx.fillStyle = '#ff4d4d';
+  ctx.beginPath(); ctx.moveTo(pin.x, pin.y - 26); ctx.lineTo(pin.x + 16, pin.y - 21);
+  ctx.lineTo(pin.x, pin.y - 16); ctx.closePath(); ctx.fill();
+
+  // ---- trees ----
+  for (const t of h.trees){
+    const c = P(t);
+    ctx.fillStyle = 'rgba(20,50,25,.28)';
+    ctx.beginPath(); ctx.ellipse(c.x + yd(1.2), c.y + yd(1.6), yd(t.r), yd(t.r * 0.8), 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2f7a38';
+    ctx.beginPath(); ctx.arc(c.x, c.y, yd(t.r), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#39914360';
+    ctx.beginPath(); ctx.arc(c.x - yd(t.r * 0.3), c.y - yd(t.r * 0.3), yd(t.r * 0.55), 0, Math.PI * 2); ctx.fill();
+  }
+
+  // ---- other players' balls ----
+  G.players.forEach((p, i) => {
+    if (i === G.turn || p.holed) return;
+    const s = P(p.ball);
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath(); ctx.arc(s.x, s.y, 3.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // ---- aim line + landing marker ----
+  if (canSwing() && !G.overview){
+    const b = me().ball;
+    const ang = aimWorld();
+    const club = CLUBS[G.club];
+    const reach = G.club === PUTTER
+      ? Math.min(dist(b, h.pin) * 1.05, 40)
+      : club.carry * (LIE_POWER[me().lie] ?? 0.8);
+    const tgt = { x: b.x + Math.sin(ang) * reach, y: b.y - Math.cos(ang) * reach };
+    const a = P(b), t = P(tgt);
+    ctx.save();
+    ctx.setLineDash([6, 7]); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.8)';
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(t.x, t.y); ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(t.x, t.y, Math.max(5, yd(6)), 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // ---- the ball in play ----
+  let ballPos = me().ball, lift = 0;
+  if (G.flight){ ballPos = G.flight.pos; lift = G.flight.height || 0; }
+  else if (G.putt) ballPos = G.putt.pos;
+  const bs = P(ballPos);
+  // shadow stays on the ground while the ball climbs
+  ctx.fillStyle = 'rgba(20,45,22,.3)';
+  ctx.beginPath(); ctx.ellipse(bs.x, bs.y, 4.5, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+  const r = 4.5 + lift * 0.05;
+  const bg2 = ctx.createRadialGradient(bs.x - 1.5, bs.y - lift - 1.8, 0.5, bs.x, bs.y - lift, r);
+  bg2.addColorStop(0, '#fff'); bg2.addColorStop(1, '#d6ddd4');
+  ctx.fillStyle = bg2;
+  ctx.beginPath(); ctx.arc(bs.x, bs.y - lift, r, 0, Math.PI * 2); ctx.fill();
+
+  // ---- distance ring to the pin while addressing the ball ----
+  if (canSwing() && !G.overview && G.club !== PUTTER){
+    const d = dist(me().ball, h.pin);
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    ctx.font = '800 11px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(Math.round(d) + ' yds to pin', pin.x, pin.y + 22);
+    ctx.textAlign = 'start';
+  }
+}
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+let lastT = 0;
+function loop(t){
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (t - lastT) / 1000 || 0);
+  lastT = t;
+
+  if (G.mode === 'play' || G.mode === 'over'){
+    stepSwing(dt);
+
+    if (G.flight){
+      const f = G.flight;
+      f.t += dt;
+      const k = Math.min(1, f.t / f.dur);
+      // carry through the air, then run out along the ground
+      if (k < 1){
+        f.pos.x = f.from.x + (f.land.x - f.from.x) * k;
+        f.pos.y = f.from.y + (f.land.y - f.from.y) * k;
+        f.height = Math.sin(k * Math.PI) * f.apex;
+      } else {
+        const rk = Math.min(1, (f.t - f.dur) / 0.5);
+        f.pos.x = f.land.x + (f.rest.x - f.land.x) * rk;
+        f.pos.y = f.land.y + (f.rest.y - f.land.y) * rk;
+        f.height = 0;
+        if (rk >= 1){ const rest = { x: f.rest.x, y: f.rest.y }; G.flight = null; finishShot(rest); }
+      }
+    }
+    if (G.putt) stepPutt(dt);
+
+    updateCamera(dt);
+    drawSwing();
+  }
+  draw();
+}
+requestAnimationFrame(loop);
+
+/* ============================================================
+   HUD
+   ============================================================ */
+function updateHUD(){
+  if (!G.h || !me()) return;
+  const p = me(), h = G.h;
+  document.getElementById('hbHole').textContent = `HOLE ${G.hole + 1}`;
+  document.getElementById('hbPar').textContent = `PAR ${h.par}`;
+  document.getElementById('hbYds').textContent = `${h.length} yds`;
+
+  let rel = 0;
+  for (let i = 0; i < HOLES; i++){
+    if (G.players[0].scores[i] === null) continue;
+    rel += G.players[0].scores[i] - PARS[i];
+  }
+  document.getElementById('hbTot').textContent = rel === 0 ? 'E' : (rel > 0 ? '+' + rel : String(rel));
+
+  const pips = document.getElementById('hbPips');
+  if (pips.children.length !== HOLES)
+    pips.innerHTML = Array.from({ length: HOLES }, () => '<span></span>').join('');
+  for (let i = 0; i < HOLES; i++)
+    pips.children[i].className = i < G.hole ? 'done' : i === G.hole ? 'now' : '';
+
+  const who = document.getElementById('whoTurn');
+  who.querySelector('.av').innerHTML = avatarHTML(p);
+  who.querySelector('.nm').textContent = p.name;
+  who.querySelector('.st').textContent = p.strokes;
+
+  const d = dist(p.ball, h.pin);
+  document.getElementById('infoDist').innerHTML =
+    `${Math.round(d)}<span style="font-size:12px;opacity:.7"> yds</span>`;
+  document.getElementById('infoLie').textContent = LIE_NAME[p.lie] || p.lie;
+  document.getElementById('infoStroke').textContent = p.strokes + 1;
+
+  const club = CLUBS[G.club];
+  const cn = document.getElementById('clubname');
+  cn.querySelector('b').textContent = club.name;
+  cn.querySelector('span').textContent = G.club === PUTTER
+    ? `${Math.round(d)} yds to pin`
+    : `${Math.round(club.carry * (LIE_POWER[p.lie] ?? 0.8))} yds`;
+
+  // wind dial
+  const w = h.wind;
+  document.getElementById('windLbl').textContent = `${w.mph} mph`;
+  document.getElementById('windArrow').style.transform =
+    `rotate(${(w.dir * 180 / Math.PI + 180).toFixed(0)}deg)`;
+}
+
+let toastTimer = null;
+function toast(msg, sub, kind){
+  const el = document.getElementById('toast');
+  el.innerHTML = msg + (sub ? `<small>${sub}</small>` : '');
+  el.className = 'on ' + (kind || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = kind || ''; }, 1600);
+}
+
+/* ---------- scorecard ---------- */
+function showCard(final){
+  const head = document.getElementById('cardHead');
+  const body = document.getElementById('cardBody');
+  document.getElementById('cardTitle').textContent = final ? resultText() : 'Scorecard';
+  head.innerHTML = '<th></th>' + PARS.map((_, i) => `<th>${i + 1}</th>`).join('') + '<th>TOT</th>';
+
+  let html = '<tr class="par-row"><td>Par</td>' + PARS.map(p => `<td>${p}</td>`).join('') +
+    `<td class="tot">${PARS.reduce((a, b) => a + b, 0)}</td></tr>`;
+  standings().forEach(({ p }) => {
+    const mine = p === G.players[0];
+    html += `<tr class="${mine ? 'mine' : ''}"><td>${escapeHTML(p.name)}</td>`;
+    let tot = 0;
+    for (let i = 0; i < HOLES; i++){
+      const s = p.scores[i];
+      if (s === null){ html += '<td>–</td>'; continue; }
+      tot += s;
+      const rel = s - PARS[i];
+      html += `<td class="${rel < 0 ? 'u' : rel > 0 ? 'o' : ''}">${s}</td>`;
+    }
+    html += `<td class="tot">${tot || '–'}</td></tr>`;
+  });
+  body.innerHTML = html;
+  document.getElementById('card').classList.remove('hide');
+}
+function resultText(){
+  const board = standings();
+  const total = board[0].total, parTot = PARS.reduce((a, b) => a + b, 0);
+  const pts = G.lastPoints ? ` · +${G.lastPoints} pts` : '';
+  if (board.length < 2){
+    const rel = total - parTot;
+    return `${total} (${rel === 0 ? 'even' : rel > 0 ? '+' + rel : rel})${pts}`;
+  }
+  const tied = board.filter(e => e.total === total);
+  if (tied.length > 1) return `Tied at ${total}${pts}`;
+  return `${board[0].p.name} wins with ${total}${pts}`;
+}
+
+/* ============================================================
+   SOUND
+   ============================================================ */
+let AC = null;
+const ac = () => (AC = AC || new (window.AudioContext || window.webkitAudioContext)());
+function blip(freq, dur, type, vol){
+  try{
+    const a = ac(), o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol ?? 0.08, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(); o.stop(a.currentTime + dur);
+  }catch(e){}
+}
+const sfxHit  = pow => blip(150 + pow * 260, 0.09, 'square', 0.07);
+const sfxPutt = ()  => blip(420, 0.06, 'sine', 0.05);
+const sfxDrop = ()  => { blip(520, 0.1, 'sine', 0.09); setTimeout(() => blip(780, 0.16, 'sine', 0.09), 90); };
+
+/* ============================================================
+   INPUT
+   ============================================================ */
+document.getElementById('swing').addEventListener('pointerdown', e => {
+  e.preventDefault(); swingClick();
+});
+// space bar is the natural desktop equivalent of the three clicks
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space'){ e.preventDefault(); swingClick(); }
+  if (e.code === 'ArrowLeft')  nudgeAim(-1);
+  if (e.code === 'ArrowRight') nudgeAim(1);
+  if (e.code === 'ArrowUp')    changeClub(-1);
+  if (e.code === 'ArrowDown')  changeClub(1);
+});
+
+function nudgeAim(dir){
+  if (!canSwing()) return;
+  G.aim += dir * 0.022;
+  G.aim = Math.max(-0.6, Math.min(0.6, G.aim));
+}
+function changeClub(d){
+  if (!canSwing()) return;
+  G.club = Math.max(0, Math.min(CLUBS.length - 1, G.club + d));
+  updateHUD();
+}
+document.getElementById('btnAimL').onclick = () => nudgeAim(-1);
+document.getElementById('btnAimR').onclick = () => nudgeAim(1);
+document.getElementById('clubDown').onclick = () => changeClub(-1);
+document.getElementById('clubUp').onclick   = () => changeClub(1);
+
+// drag anywhere on the course to aim
+let dragging = false, dragX = 0;
+cv.addEventListener('pointerdown', e => {
+  if (!canSwing()) return;
+  dragging = true; dragX = e.clientX; cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  G.aim += (e.clientX - dragX) * 0.0016;
+  G.aim = Math.max(-0.6, Math.min(0.6, G.aim));
+  dragX = e.clientX;
+});
+const stopDrag = () => { dragging = false; };
+cv.addEventListener('pointerup', stopDrag);
+cv.addEventListener('pointercancel', stopDrag);
+window.addEventListener('pointerup', stopDrag);
+
+document.getElementById('btnOver').onclick = () => { G.overview = !G.overview; };
+document.getElementById('btnCard').onclick = () => showCard(false);
+document.getElementById('bClose').onclick = () => {
+  if (G.mode === 'over'){ location.href = 'tour.html'; return; }
+  document.getElementById('card').classList.add('hide');
+};
+document.getElementById('bAgain').onclick = () => {
+  document.getElementById('card').classList.add('hide');
+  if (G.mode !== 'over') return;
+  startRound(G.players.length);
+};
+let leaveArmed = 0;
+document.getElementById('btnQuit').onclick = () => {
+  const now = Date.now();
+  if (now - leaveArmed < 2500){ location.href = 'index.html'; return; }
+  leaveArmed = now;
+  toast('Leave round?', 'Tap again to confirm');
+};
+
+/* ============================================================
+   FLOW
+   ============================================================ */
+let playerCount = 1;
+function paintPlayerPick(){
+  const box = document.getElementById('playerPick');
+  box.innerHTML = [1, 2, 3, 4].map(n =>
+    `<button class="pbtn ${n === playerCount ? 'on' : ''}" data-n="${n}">${n}</button>`).join('');
+  box.querySelectorAll('.pbtn').forEach(b => b.onclick = () => {
+    playerCount = +b.dataset.n; paintPlayerPick();
+  });
+}
+
+function startRound(n){
+  G.mode = 'play';
+  G.seed = (Math.random() * 1e9) | 0;
+  G.hole = 0;
+  G.lastPoints = 0;
+  G.players = [];
+  for (let i = 0; i < n; i++){
+    G.players.push(i === 0
+      ? newPlayer(profile.name || 'You', { avatar: profile.avatar, avatarImg: profile.avatarImg })
+      : newPlayer('Player ' + (i + 1), { avatar: ['🦊','🐼','🐧'][i - 1] || 'golf' }));
+  }
+  document.getElementById('scMenu').classList.add('hide');
+  document.getElementById('hud').style.display = 'block';
+  document.getElementById('card').classList.add('hide');
+  sizeSwing();
+  loadHole();
+}
+
+document.getElementById('bPlay').onclick = () => startRound(playerCount);
+document.getElementById('bBackMini').onclick = () => { location.href = 'index.html'; };
+
+paintPlayerPick();
+paintChip();
+refreshProfile();
+</script>
+</body>
+</html>

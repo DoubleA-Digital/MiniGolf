@@ -73,6 +73,39 @@ being stored, keeping a row a few KB rather than a few MB.
 The identity lives in `localStorage`, so clearing site data starts a new
 profile. The leaderboard is shared; the identity is not portable across devices.
 
+## Tour Mode
+
+`tour.html` is a second, different game reached from the menu: full-swing golf
+rather than mini golf, taking its cue from PGA Tour 98.
+
+- **Three-click swing.** Click to start the sweep, again to set power, a third
+  time on the way back to set accuracy. Stopping dead on the line is pure; a
+  late click hooks it, and a mishit leaks distance as well as direction.
+- **Ten clubs** from driver to putter, auto-suggested for the distance but
+  yours to override. Partial power is how you play anything short.
+- **Terrain that matters.** Fairway, rough, deep rough, bunkers, trees and
+  water all change what a swing is worth. Water and out of bounds cost a
+  stroke and drop you back down the line.
+- **Wind** stretches or shortens the carry and drifts the ball sideways.
+- **Putting** switches to a tight view of the green and reads power as a
+  fraction of the distance to the hole, so ~75% is dead weight from any range.
+- 1–4 players pass-and-play, sharing the same profile, points and leaderboard
+  as mini golf.
+
+Holes are analytic rather than tiled — a centreline corridor plus circles for
+hazards — which suits 400-yard holes far better than a grid would.
+
+Difficulty was calibrated by simulating rounds at four timing precisions:
+
+| Timing window | Score (par 36) |
+| --- | --- |
+| 22ms (frame-perfect) | −7.5 |
+| 50ms (skilled) | −1.7 |
+| 100ms (casual) | +6.0 |
+| 150ms (sloppy) | +14.4 |
+
+No hole hit the 12-stroke cap at any level.
+
 ## Playing
 
 - **Drag anywhere** to aim and pull back; release to putt. Hold **shift** while

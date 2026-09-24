@@ -339,6 +339,7 @@ document.getElementById('bServerSave').onclick = () => {
   <button class="btn" id="bHost">Host Tournament</button>
   <button class="btn alt" id="bJoinScreen">Join Game</button>
   <button class="btn alt" id="bSolo">Solo Practice</button>
+  <button class="btn alt" id="bTour">Tour Mode — Full Swing</button>
   <div class="minirow">
     <button class="btn mini" id="bSettings">Settings</button>
     <button class="btn mini" id="bBoard">Leaderboard</button>
@@ -2620,6 +2621,7 @@ async function openBoard(){
   }
 }
 
+document.getElementById('bTour').onclick = () => { location.href = 'tour.html'; };
 document.getElementById('bSettings').onclick = openSettings;
 document.getElementById('bBoard').onclick = openBoard;
 document.getElementById('bSetBack').onclick = () => show('scMenu');
