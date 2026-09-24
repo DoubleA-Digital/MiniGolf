@@ -121,10 +121,36 @@ python3 -m http.server 8077
 
 Open it in two browsers (or a phone on the same Wi-Fi) to test multiplayer.
 
+## If nobody can join
+
+Hosting and joining need a **signalling server** to introduce the peers. The
+default is the free PeerJS cloud at `peerjs.com`, and some networks block it
+outright — school and office Wi-Fi especially. The symptom is specific: DNS
+resolves, TCP connects on 443, and then the TLS handshake is reset.
+
+Check it from a terminal:
+
+```bash
+curl -sv -m 10 https://0.peerjs.com/peerjs/id 2>&1 | grep -E "Connected|reset|error"
+```
+
+If that fails while other sites work, the network is the problem, not the game.
+The menu runs the same check on load and says so before anyone tries to host.
+
+Two ways around it:
+
+1. **Use mobile data or a hotspot** — quickest test, and usually enough.
+2. **Run your own PeerServer** and point the game at it:
+   `?peer=your-host:443/path`, or paste it into the box on the warning banner.
+   It is remembered. A server is `npx peerjs --port 9000 --path /mg`, deployed
+   anywhere that supports WebSockets (Railway, Fly, Render — not Vercel
+   serverless).
+
 ## Known limitations
 
-- PeerJS uses a public signalling broker. Fine for a game with a friend; not
-  something to depend on for real traffic.
+- The default PeerJS cloud broker is free and public. Fine for a game with
+  friends; not something to depend on for real traffic, and blocked on some
+  networks (see above).
 - Joining is closed once the host starts; there is no late join.
 - There is no reconnect. If a guest drops they are marked out for the round;
   if the host drops, the room ends.

@@ -126,7 +126,16 @@
   .field::placeholder{color:rgba(255,255,255,.45);letter-spacing:2px}
   .code{font-size:44px;font-weight:900;letter-spacing:10px;padding:10px 0 4px 14px;
     background:rgba(255,255,255,.12);border-radius:16px;width:250px}
-  .err{color:#ffc4c4;font-size:13px;min-height:18px;font-weight:600}
+  .err{color:#ffc4c4;font-size:13px;min-height:18px;font-weight:600;max-width:320px;line-height:1.45}
+  .err.ok{color:#c8f5cf}
+  .nethelp{max-width:340px;background:rgba(0,0,0,.26);border:1px solid rgba(255,190,190,.3);
+    border-radius:16px;padding:12px 14px;text-align:left;pointer-events:auto}
+  .nethelp b{display:block;font-size:13px;color:#ffd0c8;margin-bottom:4px}
+  .nethelp p{font-size:11.5px;line-height:1.5;opacity:.85;margin:0 0 9px}
+  .nethelp code{background:rgba(255,255,255,.14);padding:1px 4px;border-radius:4px;font-size:11px}
+  .srvrow{display:flex;gap:7px}
+  .field.small{font-size:12px;padding:9px 10px;flex:1}
+  .srvmsg{display:block;font-size:10.5px;opacity:.8;margin-top:6px;min-height:13px}
   .spin{width:26px;height:26px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;
     border-radius:50%;animation:sp .8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
@@ -171,7 +180,35 @@
   .minirow{display:flex;gap:10px}
   .btn.mini{min-width:112px;font-size:14px;padding:12px 16px}
 
-  /* ---------- lobby ---------- */
+  /* ---------- connection trouble ---------- */
+function showNetHelp(on){
+  const el = document.getElementById('netHelp');
+  if (el) el.style.display = on ? '' : 'none';
+}
+
+// Warn before anyone tries to host, rather than after it fails.
+async function checkSignalling(){
+  if (typeof Peer !== 'function'){ showNetHelp(true); return; }
+  const ok = await probeSignalling(8000);
+  showNetHelp(!ok);
+}
+
+document.getElementById('bServerSave').onclick = () => {
+  const v = document.getElementById('serverInput').value.trim();
+  try{
+    if (v) localStorage.setItem('mg_peer', v); else localStorage.removeItem('mg_peer');
+  }catch(e){}
+  document.getElementById('serverMsg').textContent = v
+    ? 'Saved. Re-checking ' + v + '…' : 'Cleared. Using the default server.';
+  checkSignalling().then(() => {
+    document.getElementById('serverMsg').textContent =
+      document.getElementById('netHelp').style.display === 'none'
+        ? 'Connected to the matchmaking server.'
+        : 'Still cannot reach it from this network.';
+  });
+};
+
+/* ---------- lobby ---------- */
   .lobby{width:100%;max-width:300px;background:rgba(0,0,0,.18);border-radius:16px;
     border:1px solid rgba(255,255,255,.12);padding:10px;max-height:34vh;overflow:auto}
   .lobbyhead{font-size:10.5px;font-weight:900;letter-spacing:1px;opacity:.7;margin-bottom:7px}
@@ -306,6 +343,17 @@
     <button class="btn mini" id="bSettings">Settings</button>
     <button class="btn mini" id="bBoard">Leaderboard</button>
   </div>
+  <div id="netHelp" class="nethelp" style="display:none">
+    <b>Can't reach the matchmaking server</b>
+    <p>Hosting and joining need <code>peerjs.com</code>, and this network appears to
+       block it. School and office Wi-Fi often do. Try mobile data or a hotspot —
+       or point the game at your own server below.</p>
+    <div class="srvrow">
+      <input class="field wide small" id="serverInput" placeholder="my-peerserver.example.com:443/mg" autocomplete="off" spellcheck="false">
+      <button class="btn mini" id="bServerSave">Use</button>
+    </div>
+    <span class="srvmsg" id="serverMsg"></span>
+  </div>
 </div>
 
 <!-- ================= HOST LOBBY ================= -->
@@ -319,6 +367,7 @@
     <div id="lobbyList"></div>
   </div>
   <button class="btn" id="bStart">Start Tournament</button>
+  <button class="btn" id="bHostRetry" style="display:none">Try Again</button>
   <button class="btn alt" id="bHostBack">Back</button>
 </div>
 
@@ -808,6 +857,7 @@ const G = {
   mode: 'menu',          // menu | play | over
   online: false,
   isHost: false,
+  roomOpen: false,
   started: false,
   seed: 0,
   hole: 0,
@@ -2009,13 +2059,71 @@ const sfxDrop = ()  => { blip(520, 0.1, 'sine', 0.09); setTimeout(() => blip(780
    balls locally from the shared seed; the owner of a ball is the only
    authority on where it finally stopped and what it scored.
    ============================================================ */
+// The game depends on a signalling server to introduce peers. The default is
+// the free PeerJS cloud, which some networks (school/work Wi-Fi) block outright
+// — DNS and TCP succeed, then the TLS handshake is reset. `?peer=host:port/path`
+// points the game at a different one and is remembered.
+function customPeerServer(){
+  try{
+    const q = new URLSearchParams(location.search).get('peer');
+    if (q !== null){
+      if (q) localStorage.setItem('mg_peer', q); else localStorage.removeItem('mg_peer');
+      return q;
+    }
+    return localStorage.getItem('mg_peer') || '';
+  }catch(e){ return ''; }
+}
+function peerOpts(){
+  const raw = customPeerServer();
+  if (!raw) return { debug: 0 };                       // PeerJS cloud
+  const m = String(raw).trim().replace(/^https?:\/\//, '').match(/^([^:/]+)(?::(\d+))?(\/.*)?$/);
+  if (!m) return { debug: 0 };
+  const o = { debug: 0, host: m[1], secure: true, path: m[3] || '/' };
+  if (m[2]) o.port = +m[2];
+  return o;
+}
+
+// A failure to join is not the same as a wrong code, and telling someone their
+// code is wrong when the server is unreachable sends them retyping it forever.
+function peerError(err){
+  const t = (err && err.type) || String((err && err.message) || err || '');
+  if (t === 'peer-unavailable')
+    return { kind: 'code', msg: 'No room with that code. Check it, or ask the host to open a new one.' };
+  if (t === 'unavailable-id')
+    return { kind: 'id', msg: 'That code is already taken — trying another.' };
+  if (t === 'browser-incompatible')
+    return { kind: 'browser', msg: 'This browser cannot make the connection this game needs.' };
+  if (t === 'invalid-id' || t === 'invalid-key')
+    return { kind: 'code', msg: 'That code is not valid.' };
+  return { kind: 'net', msg: 'Cannot reach the matchmaking server. This network may be blocking it — try mobile data or a hotspot.' };
+}
+
+// Quick reachability check so the menu can warn before anyone tries to host.
+function probeSignalling(ms){
+  return new Promise(resolve => {
+    let done = false, p = null;
+    const finish = ok => {
+      if (done) return;
+      done = true;
+      try{ p && p.destroy(); }catch(e){}
+      resolve(ok);
+    };
+    const timer = setTimeout(() => finish(false), ms || 8000);
+    try{
+      p = new Peer(peerOpts());
+      p.on('open',  () => { clearTimeout(timer); finish(true); });
+      p.on('error', () => { clearTimeout(timer); finish(false); });
+    }catch(e){ clearTimeout(timer); finish(false); }
+  });
+}
+
 const net = {
   peer: null, conns: [], host: null, connected: false, code: null,
 
   // ---- host ----
   initHost(code){
     return new Promise((resolve, reject) => {
-      const peer = new Peer('mgolf-' + code, { debug: 0 });
+      const peer = new Peer('mgolf-' + code, peerOpts());
       net.peer = peer; net.code = code;
       peer.on('open', id => resolve(id));
       peer.on('error', err => reject(err));
@@ -2073,7 +2181,7 @@ const net = {
   // ---- guest ----
   initClient(code){
     return new Promise((resolve, reject) => {
-      const peer = new Peer({ debug: 0 });
+      const peer = new Peer(peerOpts());
       net.peer = peer; net.code = code;
       const timer = setTimeout(() => reject(new Error('timeout')), 14000);
       peer.on('error', err => { clearTimeout(timer); reject(err); });
@@ -2209,21 +2317,45 @@ const myRosterEntry = () => ({
 });
 
 // --- menu ---
-document.getElementById('bHost').onclick = async () => {
+async function openRoom(){
+  const msg = document.getElementById('hostMsg');
+  const retry = document.getElementById('bHostRetry');
   G.online = true; G.isHost = true;
-  const code = randCode();
+  G.roomOpen = false;
   G.roster = [myRosterEntry()];
-  document.getElementById('hostCode').textContent = code;
-  document.getElementById('hostMsg').textContent = 'Share this code. Anyone with it can join.';
   show('scHost');
   paintLobby();
-  try{
-    await net.initHost(code);
-  }catch(err){
-    document.getElementById('hostMsg').textContent =
-      'Could not open a room. Check your connection and try again.';
+  retry.style.display = 'none';
+
+  // A taken code is recoverable — just pick another rather than dead-ending.
+  for (let attempt = 0; attempt < 3; attempt++){
+    const code = randCode();
+    document.getElementById('hostCode').textContent = code;
+    msg.textContent = 'Opening room…';
+    try{
+      await net.initHost(code);
+      G.roomOpen = true;
+      msg.textContent = 'Share this code. Anyone with it can join.';
+      showNetHelp(false);
+      paintLobby();
+      return;
+    }catch(err){
+      const info = peerError(err);
+      try{ net.peer && net.peer.destroy(); }catch(e){}
+      net.peer = null;
+      if (info.kind === 'id') continue;            // collision: new code, go again
+      msg.textContent = info.msg;
+      retry.style.display = '';
+      paintLobby();
+      if (info.kind === 'net') showNetHelp(true);
+      return;
+    }
   }
-};
+  msg.textContent = 'Could not find a free room code. Try again in a moment.';
+  retry.style.display = '';
+}
+document.getElementById('bHost').onclick = openRoom;
+document.getElementById('bHostRetry').onclick = openRoom;
 document.getElementById('bStart').onclick = () => {
   if (G.roster.length < 1) return;
   startTournament();
@@ -2250,17 +2382,26 @@ document.getElementById('bJoinBack').onclick = () => show('scMenu');
 document.getElementById('bJoin').onclick = async () => {
   const code = document.getElementById('joinCode').value.trim().toUpperCase();
   const err = document.getElementById('joinErr');
-  if (code.length !== 4){ err.textContent = 'Enter the 4-character code.'; return; }
+  const btn = document.getElementById('bJoin');
+  if (!/^[A-Z2-9]{4}$/.test(code)){
+    err.textContent = 'Enter the 4-character code from the host.';
+    err.className = 'err'; return;
+  }
   G.online = true; G.isHost = false;
-  err.textContent = 'Connecting…';
-  document.getElementById('bJoin').disabled = true;
+  err.textContent = 'Connecting…'; err.className = 'err';
+  btn.disabled = true;
   try{
     await net.initClient(code);
     err.textContent = 'Joined. Waiting for the host to start…';
+    err.className = 'err ok';
   }catch(e){
-    err.textContent = 'No game found with that code.';
-    document.getElementById('bJoin').disabled = false;
+    const info = peerError(e);
+    err.textContent = info.msg;
+    err.className = 'err';
+    btn.disabled = false;
+    if (info.kind === 'net') showNetHelp(true);
     try{ net.peer && net.peer.destroy(); }catch(_){}
+    net.peer = null; net.host = null; net.connected = false;
   }
 };
 document.getElementById('joinCode').addEventListener('keydown', e => {
@@ -2268,10 +2409,38 @@ document.getElementById('joinCode').addEventListener('keydown', e => {
 });
 
 document.getElementById('bSolo').onclick = () => {
-  G.online = false; G.isHost = true;
+  G.online = false; G.isHost = true; G.roomOpen = true;
   G.seed = (Math.random() * 1e9) | 0;
   G.roster = [myRosterEntry()];
   beginGame(G.roster);
+};
+
+/* ---------- connection trouble ---------- */
+function showNetHelp(on){
+  const el = document.getElementById('netHelp');
+  if (el) el.style.display = on ? '' : 'none';
+}
+
+// Warn before anyone tries to host, rather than after it fails.
+async function checkSignalling(){
+  if (typeof Peer !== 'function'){ showNetHelp(true); return; }
+  const ok = await probeSignalling(8000);
+  showNetHelp(!ok);
+}
+
+document.getElementById('bServerSave').onclick = () => {
+  const v = document.getElementById('serverInput').value.trim();
+  try{
+    if (v) localStorage.setItem('mg_peer', v); else localStorage.removeItem('mg_peer');
+  }catch(e){}
+  document.getElementById('serverMsg').textContent = v
+    ? 'Saved. Re-checking ' + v + '…' : 'Cleared. Using the default server.';
+  checkSignalling().then(() => {
+    document.getElementById('serverMsg').textContent =
+      document.getElementById('netHelp').style.display === 'none'
+        ? 'Connected to the matchmaking server.'
+        : 'Still cannot reach it from this network.';
+  });
 };
 
 /* ---------- lobby ---------- */
@@ -2287,7 +2456,11 @@ function paintLobby(){
   const cnt = document.getElementById('lobbyCount');
   if (cnt) cnt.textContent = G.roster.length + (G.roster.length === 1 ? ' player' : ' players');
   const start = document.getElementById('bStart');
-  if (start) start.style.display = G.isHost ? '' : 'none';
+  if (start){
+    start.style.display = G.isHost ? '' : 'none';
+    // Starting a room that never opened produces a tournament nobody can join.
+    start.disabled = G.online && !G.roomOpen;
+  }
 }
 
 const escapeHTML = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -2471,6 +2644,12 @@ G.myPid = (() => {
 })();
 initProfile();
 try{ setMuted(localStorage.getItem('mg_muted') === '1'); }catch(e){}
+try{
+  const saved = customPeerServer();
+  if (saved) document.getElementById('serverInput').value = saved;
+}catch(e){}
+// PeerJS is loaded with `defer`, so wait for it before probing.
+window.addEventListener('load', () => { checkSignalling(); });
 
 // Shared invite link: ?room=CODE drops you straight onto the join screen with
 // the code filled in, so nobody has to read four letters down a phone.
