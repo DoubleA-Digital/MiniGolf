@@ -72,6 +72,20 @@ class Dots {
   }
 }
 
+// height on a triangulated grid laid out like the terrain mesh (last row/column clamped to the edge)
+function gridHeight(g, x, z){
+  const { nx, nz, step, heights } = g;
+  const fx0 = Math.max(0, Math.min(nx - 1.000001, (x - g.minX) / step));
+  const fz0 = Math.max(0, Math.min(nz - 1.000001, (z - g.minZ) / step));
+  const c = Math.min(nx - 2, Math.floor(fx0)), r = Math.min(nz - 2, Math.floor(fz0));
+  const x0 = g.minX + c * step, z0 = g.minZ + r * step;
+  const fx = Math.max(0, Math.min(1, (x - x0) / Math.max(1e-6, Math.min(g.maxX, x0 + step) - x0)));
+  const fz = Math.max(0, Math.min(1, (z - z0) / Math.max(1e-6, Math.min(g.maxZ, z0 + step) - z0)));
+  const a = heights[r * nx + c], b = heights[r * nx + c + 1], cc = heights[(r + 1) * nx + c], d = heights[(r + 1) * nx + c + 1];
+  // the quad is split along the b-c diagonal
+  return fx + fz <= 1 ? a + (b - a) * fx + (cc - a) * fz : d + (cc - d) * (1 - fx) + (b - d) * (1 - fz);
+}
+
 /* ---------- the world ---------- */
 export class World {
   constructor(canvas){
@@ -233,6 +247,7 @@ export class World {
 
     /* ---- terrain mesh with a far skirt ---- */
     const { nx, nz, step, heights } = prep.terr;
+    this.terr = { nx, nz, step, heights, minX: b.minX, minZ: b.minZ, maxX: b.maxX, maxZ: b.maxZ };
     const cols = nx + 2, rows = nz + 2;
     const pos = new Float32Array(cols * rows * 3);
     const uv = new Float32Array(cols * rows * 2);
@@ -276,6 +291,8 @@ export class World {
     const gtex = new THREE.CanvasTexture(gp.canvas);
     gtex.colorSpace = THREE.SRGBColorSpace; gtex.flipY = false; gtex.anisotropy = 8;
     const { gn, gs } = prep.gpatch, gH = prep.gpatch.heights;
+    this.gpatch = { nx: gn, nz: gn, step: gs, heights: gH, minX: gReg.minX, minZ: gReg.minZ,
+                    maxX: gReg.minX + gr * 2, maxZ: gReg.minZ + gr * 2, lift: 0.008 };
     const gpos = new Float32Array(gn * gn * 3), guv = new Float32Array(gn * gn * 2);
     k = 0; u = 0;
     for (let r = 0; r < gn; r++){
@@ -345,6 +362,25 @@ export class World {
     this.buildGreenGrid(h);
     this.flowSeed = mulberry32(h.seed + 99);
     this.flowP = [];
+  }
+
+  /* Height of the terrain as it is drawn (the triangulated grid, not the
+     analytic surface), so things resting on it never sink in or float. */
+  groundAt(x, z){
+    if (!this.terr) return this.h ? this.h.heightAt(x, z) : 0;
+    let y = gridHeight(this.terr, x, z);
+    const g = this.gpatch;
+    if (g && x > g.minX && x < g.maxX && z > g.minZ && z < g.maxZ) y = Math.max(y, gridHeight(g, x, z) + g.lift);
+    return y;
+  }
+
+  // upload textures and compile shaders now, while the screen is faded out
+  warm(){
+    try{ this.renderer.compile(this.scene, this.camera); }catch(e){}
+    this.scene.traverse(o => {
+      const m = o.material;
+      if (m && m.map && m.map.isTexture && this.renderer.initTexture) this.renderer.initTexture(m.map);
+    });
   }
 
   waterNormal(){
@@ -640,7 +676,8 @@ export class World {
     this.ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 22, 16), bm);
     this.ball.renderOrder = 7;
     this.scene.add(this.ball);
-    const sm = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.35, depthWrite: false });
+    const sm = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.35, depthWrite: false,
+                                             polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
     this.ballShadow = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * 1.15, 16), sm);
     this.ballShadow.rotation.x = -Math.PI / 2;
     this.ballShadow.renderOrder = 3;
@@ -659,20 +696,28 @@ export class World {
     this.glow.renderOrder = 9;
     this.scene.add(this.glow);
   }
+  // physics runs on the analytic surface; near the ground, draw on the mesh
+  visualY(p){
+    if (!this.h) return p.y;
+    const ga = this.h.heightAt(p.x, p.z), hgt = p.y - ga;
+    if (hgt > 1.5) return p.y;
+    return p.y + (this.groundAt(p.x, p.z) - ga) * (1 - Math.max(0, hgt) / 1.5);
+  }
   placeBall(p, air = 0){
     const cam = this.camera.position;
-    const d = cam.distanceTo(new THREE.Vector3(p.x, p.y, p.z));
+    const y = this.visualY(p);
+    const d = Math.hypot(cam.x - p.x, cam.y - y, cam.z - p.z);
     const s = Math.max(1, Math.min(14, d / 11));
-    this.ball.position.set(p.x, p.y, p.z);
+    this.ball.position.set(p.x, y, p.z);
     this.ball.scale.setScalar(s);
     if (this.h){
-      const gy = this.h.heightAt(p.x, p.z);
-      this.ballShadow.position.set(p.x, gy + 0.01, p.z);
+      const gy = this.groundAt(p.x, p.z);
+      this.ballShadow.position.set(p.x, gy + 0.006, p.z);
       const hgt = p.y - gy;
       this.ballShadow.scale.setScalar(s * (1 + hgt * 0.02));
       this.ballShadow.material.opacity = 0.38 * Math.max(0.1, 1 - hgt / 30);
     }
-    this.glow.position.set(p.x, p.y, p.z);
+    this.glow.position.set(p.x, y, p.z);
     this.glow.material.opacity = Math.min(0.9, Math.max(0, (d - 40) / 120)) * (this.glowBoost || 1);
   }
 
@@ -767,7 +812,7 @@ export class World {
       const c = Math.cos(a), s = Math.sin(a);
       for (const r of [radius - width / 2, radius + width / 2]){
         const x = p.x + c * r, z = p.z + s * r;
-        arr[k++] = x; arr[k++] = h.heightAt(x, z) + 0.06 + radius * 0.004; arr[k++] = z;
+        arr[k++] = x; arr[k++] = this.groundAt(x, z) + 0.05 + radius * 0.004; arr[k++] = z;
       }
     }
     mesh.geometry.attributes.position.needsUpdate = true;

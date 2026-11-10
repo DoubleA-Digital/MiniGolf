@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { CLUBS, PUTTER, SHOTS, LIES, SURF, DIFFICULTY, THEMES, PARS_18, STROKE_CAP, SCORE_NAMES,
          PLAYER_COLORS, G as GRAV, MPH } from './config.js';
 import { genHole, gradAt, underTree, defaultAim } from './course.js';
-import { launch, rollStart, simulate, speedFor, windVec, samplePath, pathDuration } from './physics.js';
+import { launch, rollStart, simulate, speedFor, solveRising, windVec, samplePath, pathDuration } from './physics.js';
 import { World } from './render.js';
 import { createGolfer, clubKind } from './golfer.js';
 import { sfx, unlock, setMuted, isMuted, startAmbience, stopAmbience } from './audio.js';
@@ -177,6 +177,7 @@ function startRound(){
   S.players = names.map((n, i) => {
     const color = PLAYER_COLORS[i];
     const g = createGolfer(color, ['#d9a57e', '#8d5a3b', '#f0c8a0', '#b97a50'][i]);
+    g.setGround((x, z) => world.groundAt(x, z));
     g.group.visible = false;
     world.scene.add(g.group);
     const ob = new THREE.Mesh(otherBallGeo, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.35,
@@ -222,6 +223,7 @@ function loadHole(i){
     h.wind.mph = Math.round(h.wind.mph * S.D.wind);
     S.h = h;
     world.buildHole(h, prep);
+    world.warm();
     if (i + 1 < S.pars.length) requestPrep(holeSeed(i + 1), S.pars[i + 1], S.theme);
     buildMinimap();
     for (const p of S.players){
@@ -238,8 +240,9 @@ function loadHole(i){
     S.shot = null;
     world.setTracer(null);
     startAmbience(h.wind.mph);
-    fade(false);
     startFlyover();
+    // the first frame of a new hole uploads its textures: let it land behind the fade
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (S.seed === round) fade(false); }));
   });
 }
 
@@ -294,7 +297,7 @@ function beginTurn(){
   for (const q of S.players){
     q.golfer.group.visible = q === p;
     q.marker.visible = q !== p && !q.holed;
-    if (q !== p) q.marker.position.set(q.ball.x, q.ball.y, q.ball.z);
+    if (q !== p) q.marker.position.set(q.ball.x, world.visualY(q.ball), q.ball.z);
   }
   placeGolfer();
   S.previewDirty = true;
@@ -353,7 +356,7 @@ function placeGolfer(){
   g.setClub(kind);
   g.state.style = S.mode === 'putt' ? 'putt' : S.mode === 'chip' ? 'chip' : 'full';
   g.pose(0, g.state.style);
-  g.group.position.set(p.ball.x, S.h.heightAt(p.ball.x, p.ball.z), p.ball.z);
+  g.group.position.set(p.ball.x, world.groundAt(p.ball.x, p.ball.z), p.ball.z);
   g.group.rotation.set(0, -S.aimYaw, 0);
 }
 
@@ -386,14 +389,11 @@ function chipSpeed(carry, launchDeg, spin){
   const key = `${S.holeIdx}|${p.ball.x.toFixed(2)}|${p.ball.z.toFixed(2)}|${S.aimYaw.toFixed(3)}|${launchDeg}|${Math.round(spin)}|${carry.toFixed(1)}`;
   if (chipCache.has(key)) return chipCache.get(key);
   const from = ballStart();
-  let lo = 0.5, hi = 70;
-  for (let i = 0; i < 22; i++){
-    const mid = (lo + hi) / 2;
-    const r = simulate(h, launch(from, S.aimYaw, mid, launchDeg, spin, 0), { airOnly: true, maxT: 8 });
-    const d = r.carryPt ? hdist(r.carryPt, from) : 999;
-    if (d < carry) lo = mid; else hi = mid;
-  }
-  const v = (lo + hi) / 2;
+  // solved to a few millimetres of carry, finer than the simulation's own step
+  const v = solveRising(sp => {
+    const r = simulate(h, launch(from, S.aimYaw, sp, launchDeg, spin, 0), { airOnly: true, maxT: 8 });
+    return r.carryPt ? hdist(r.carryPt, from) : 999;
+  }, carry, 0.5, 70, 0.004, 0.003);
   if (chipCache.size > 4000) chipCache.clear();
   chipCache.set(key, v);
   return v;
@@ -417,6 +417,10 @@ function planChip(){
   // land it where it will release to the hole (calm air)
   const p = me(), h = S.h, sh = SHOTS[S.shotType];
   const dPin = hdist(p.ball, h.pin);
+  if (settings.diff === 'tour'){
+    S.chipTarget = clamp(dPin * (S.shotType === 'bump' ? 0.4 : S.shotType === 'flop' ? 0.92 : 0.75), 0.8, sh.maxCarry);
+    return;
+  }
   let lo = 0.8, hi = Math.min(sh.maxCarry, dPin + 2);
   for (let i = 0; i < 11; i++){
     const mid = (lo + hi) / 2;
@@ -455,7 +459,8 @@ function stepMeter(dt){
     const prev = M.m;
     M.m -= dt * 1.32 * rate;
     if (prev > 0.3 && M.m <= 0.3) sfx.whoosh(Math.min(1, M.power));
-    me().golfer.pose(-Math.max(0, Math.min(M.power, M.m)), 'full');
+    const u = clamp(M.m / Math.max(0.05, M.power), 0, 1);
+    me().golfer.pose(-Math.min(1.05, M.power) * Math.pow(u, 0.6), 'full', { down: true, top: Math.min(1.05, M.power) });
     if (M.m <= -0.17){ M.m = -0.17; fireFull(-0.17); }
   }
   if (M.flash > 0) M.flash -= dt;
@@ -762,7 +767,7 @@ function nextTurn(){
     fade(true);
     later(() => { cam.cut = true; beginTurn(); fade(false); toast(`${next.name} is up`, `${Math.round(hdist(next.ball, S.h.pin))} yards out`); }, 300);
   } else {
-    cam.cut = S.shot && S.shot.kind !== 'putt' && hdist(S.shot.from, next.ball) > 40;
+    cam.cut = S.shot && S.shot.kind !== 'putt' && hdist(S.shot.from, next.ball) > 25;
     beginTurn();
   }
 }
@@ -865,8 +870,8 @@ function cameraAddress(){
     fov = 50;
   } else if (S.mode === 'putt'){
     const d = Math.min(28, hdist(b, h.pin));
-    pos = bv.clone().addScaledVector(f, -(2.6 + d * 0.15)).addScaledVector(r, 0.62);
-    pos.y = bv.y + 1.05 + d * 0.075;
+    pos = bv.clone().addScaledVector(f, -(3.1 + d * 0.13)).addScaledVector(r, 0.78);
+    pos.y = bv.y + 1.2 + d * 0.07;
     look = bv.clone().addScaledVector(f, Math.max(1.5, d * 0.6)).addScaledVector(r, 0.2);
     look.y = groundY(look.x, look.z) + 0.05;
     fov = 46;
@@ -913,8 +918,8 @@ function cameraFlight(dt){
     const start = V3(sh.from.x, sh.from.y, sh.from.z);
     const d = hdist(sh.from, h.pin);
     const along = b.clone().sub(start).dot(f);
-    const base = start.clone().addScaledVector(f, -(2.6 + Math.min(28, d) * 0.15) + Math.max(0, along - 3) * 0.6).addScaledVector(r, 0.62);
-    base.y = start.y + 1.05 + Math.min(28, d) * 0.075;
+    const base = start.clone().addScaledVector(f, -(3.1 + Math.min(28, d) * 0.13) + Math.max(0, along - 3) * 0.6).addScaledVector(r, 0.78);
+    base.y = start.y + 1.2 + Math.min(28, d) * 0.07;
     cam.tPos.copy(base);
     cam.tLook.copy(b);
     cam.k = 3; cam.tFov = portraitFov(46);
@@ -1014,6 +1019,10 @@ function applyCamera(dt){
     cam.fov += (cam.tFov - cam.fov) * k;
   }
   const c = world.camera;
+  if (S.h && S.phase !== 'menu'){
+    const gy = world.groundAt(cam.pos.x, cam.pos.z) + 0.35;
+    if (cam.pos.y < gy) cam.pos.y = gy;
+  }
   c.position.copy(cam.pos);
   if (cam.shake > 0.001 && !reduceMotion){
     c.position.x += (Math.random() - 0.5) * cam.shake;
@@ -1231,9 +1240,12 @@ function refreshHUD(){
 
 /* ---------- swing meter (canvas) ---------- */
 const meterCv = $('meter'), mctx = meterCv.getContext('2d');
+// the meter's size, kept by an observer so drawing never forces a layout
+const meterBox = { width: 0, height: 0 };
+if (window.ResizeObserver) new ResizeObserver(es => { for (const e of es){ meterBox.width = e.contentRect.width; meterBox.height = e.contentRect.height; } }).observe(meterCv);
 function drawMeter(){
   if (meterCv.classList.contains('hidden')) return;
-  const r = meterCv.getBoundingClientRect();
+  const r = meterBox.width ? meterBox : meterCv.getBoundingClientRect();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   if (meterCv.width !== Math.round(r.width * dpr)){ meterCv.width = Math.round(r.width * dpr); meterCv.height = Math.round(r.height * dpr); }
   const W = r.width, H = r.height;
@@ -1324,6 +1336,7 @@ function drawMeter(){
 }
 
 /* ---------- hold ring for chips ---------- */
+let holdRingHTML = '';
 function drawHoldRing(){
   const svg = $('holdRing');
   if ($('holdBtn').classList.contains('hidden')) return;
@@ -1336,29 +1349,32 @@ function drawHoldRing(){
   const ta = (tf - tol) * 360 - 90, tb = (tf + tol) * 360 - 90;
   const pt = d => [75 + Math.cos(d * Math.PI / 180) * 68, 75 + Math.sin(d * Math.PI / 180) * 68];
   const [x1, y1] = pt(ta), [x2, y2] = pt(tb);
-  svg.innerHTML = `<circle cx="75" cy="75" r="68" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="9"/>
-    <path d="M${x1} ${y1} A68 68 0 0 1 ${x2} ${y2}" fill="none" stroke="#43d17a" stroke-width="13" stroke-linecap="round"/>
+  const html = `<circle cx="75" cy="75" r="68" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="9"/>
+    <path d="M${x1.toFixed(2)} ${y1.toFixed(2)} A68 68 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)}" fill="none" stroke="#43d17a" stroke-width="13" stroke-linecap="round"/>
     ${S.hold.on ? arc(gf, S.preview && S.preview.ghostOn ? '#43d17a' : '#ffcf4a', 9, 1) : ''}`;
+  if (html !== holdRingHTML){ svg.innerHTML = html; holdRingHTML = html; }
 }
 
 /* ---------- floating labels ---------- */
 const labelEls = new Map();
 function label(key, cls, html, p, show = true){
   let el = labelEls.get(key);
-  if (!el){ el = document.createElement('div'); el.className = 'wl ' + cls; $('labels').appendChild(el); labelEls.set(key, el); }
-  if (!show || !p){ el.style.display = 'none'; return; }
+  if (!el){ el = document.createElement('div'); el.className = 'wl ' + cls; el.style.left = el.style.top = '0px'; $('labels').appendChild(el); labelEls.set(key, el); }
+  const hide = () => { if (el._hid !== true){ el.style.display = 'none'; el._hid = true; } };
+  if (!show || !p) return hide();
   const s = world.project(p);
-  if (s.behind || s.x < -50 || s.x > innerWidth + 50 || s.y < -20 || s.y > innerHeight + 40){ el.style.display = 'none'; return; }
-  el.style.display = '';
+  if (s.behind || s.x < -50 || s.x > innerWidth + 50 || s.y < -20 || s.y > innerHeight + 40) return hide();
+  if (el._hid !== false){ el.style.display = ''; el._hid = false; }
   if (el._h !== html){ el.innerHTML = html; el._h = html; }
   const m = 34;
-  el.style.left = Math.max(m, Math.min(innerWidth - m, s.x)) + 'px';
-  el.style.top = Math.max(m, s.y) + 'px';
+  // `translate` composites on its own and leaves the class's transform offset alone
+  const t = `${Math.round(Math.max(m, Math.min(innerWidth - m, s.x)))}px ${Math.round(Math.max(m, s.y))}px`;
+  if (el._t !== t){ el.style.translate = t; el._t = t; }
 }
 function updateLabels(){
   const h = S.h, p = me();
   if (!h || !p || S.phase === 'menu' || S.phase === 'holeEnd' || S.phase === 'over' || S.phase === 'loading'){
-    for (const el of labelEls.values()) el.style.display = 'none';
+    for (const el of labelEls.values()) if (el._hid !== true){ el.style.display = 'none'; el._hid = true; }
     return;
   }
   const address = S.phase === 'address';
@@ -1903,6 +1919,7 @@ function buildAttract(){
     S.h = h;
     S.theme = theme;
     world.buildHole(h, prep);
+    world.warm();
     world.placeBall({ x: h.pin.x + 1.2, y: h.heightAt(h.pin.x + 1.2, h.pin.z + 0.8) + 0.0233, z: h.pin.z + 0.8 });
     cam.cut = true;
   });
@@ -1950,7 +1967,7 @@ function frame(now){
       world.placeBall(p.ball);
       const onTee = p.lie === 'tee' && S.mode === 'full';
       world.peg.visible = onTee;
-      if (onTee) world.peg.position.set(p.ball.x, S.h.heightAt(p.ball.x, p.ball.z) + 0.02, p.ball.z);
+      if (onTee) world.peg.position.set(p.ball.x, world.groundAt(p.ball.x, p.ball.z) + 0.02, p.ball.z);
     }
   } else if (S.phase === 'flight') stepShot(dt);
 
@@ -1959,7 +1976,7 @@ function frame(now){
     const d = S.down;
     d.t += dt;
     const k = Math.min(1, d.t / d.dur);
-    p.golfer.pose(d.from * (1 - k * k), d.style);
+    p.golfer.pose(d.from * (1 - k * k), d.style, { down: true, top: -d.from });
     if (k >= 1){ const fire = d.fire; S.down = null; fire(); }
   }
   if (p && S.follow){

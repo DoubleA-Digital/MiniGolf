@@ -77,15 +77,36 @@ export function flatCarry(speed, launchDeg, spin, floor = 0){
   return { carry: Math.hypot(st.p.x, st.p.z), apex, time: t };
 }
 
+/* Find x in [lo, hi] where a rising f(x) reaches `target`. Regula falsi
+   (Illinois) keeps a bracket like bisection but needs a fraction of the
+   evaluations; a bisection step is forced whenever the bracket stops shrinking. */
+export function solveRising(f, target, lo, hi, xTol, fTol = 1e-5, maxIt = 60){
+  let flo = f(lo) - target, fhi = f(hi) - target;
+  if (flo >= 0 || fhi <= 0){
+    // not bracketed (or f folds over): plain bisection, as the callers always did
+    for (let i = 0; i < maxIt && hi - lo > xTol; i++){
+      const mid = (lo + hi) / 2;
+      if (f(mid) < target) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  let side = 0, width = hi - lo;
+  for (let i = 0; i < maxIt && hi - lo > xTol; i++){
+    let x = hi - fhi * (hi - lo) / (fhi - flo);
+    if (!(x > lo && x < hi) || (i % 3 === 2 && hi - lo > width * 0.5)) x = (lo + hi) / 2;
+    if (i % 3 === 2) width = hi - lo;
+    const fx = f(x) - target;
+    if (Math.abs(fx) < fTol) return x;
+    if (fx < 0){ lo = x; flo = fx; if (side === -1) fhi /= 2; side = -1; }
+    else { hi = x; fhi = fx; if (side === 1) flo /= 2; side = 1; }
+  }
+  return (lo + hi) / 2;
+}
+
 /* Launch speed that carries `carry` yards (calm, flat) for this launch/spin. */
 export function speedFor(carry, launchDeg, spin){
   if (carry <= 0.2) return 0.5;
-  let lo = 1, hi = 140;
-  for (let i = 0; i < 28; i++){
-    const mid = (lo + hi) / 2;
-    if (flatCarry(mid, launchDeg, spin).carry < carry) lo = mid; else hi = mid;
-  }
-  return (lo + hi) / 2;
+  return solveRising(v => flatCarry(v, launchDeg, spin).carry, carry, 1, 140, 139 / (1 << 28), 1e-6);
 }
 
 /* Simulate a shot to completion.
