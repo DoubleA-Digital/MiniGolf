@@ -186,7 +186,7 @@ export function simulate(hole, st, opts = {}){
       const drop = mu * G * DT;
       if (sp <= drop){
         // friction wins: the ball stops unless the slope is steeper than it can hold
-        if (Math.hypot(ax, az) < mu * G * 0.98){
+        if (Math.hypot(ax, az) <= mu * G){
           st.v.x = 0; st.v.z = 0; rec(); break;
         }
         vx = 0; vz = 0;
@@ -257,7 +257,7 @@ function bounce(hole, st, surf){
   let tx = st.v.x - vn * nx, ty = st.v.y - vn * ny, tz = st.v.z - vn * nz;
   const vt = Math.hypot(tx, ty, tz);
   const steep = Math.min(2, Math.abs(vn) / (vt + 0.01));
-  const bite = (st.spin / 4000) * S.grip;
+  const bite = (st.spin / 5000) * S.grip;
   let keep = 1 - S.fric * (1 + bite * steep);
   keep = Math.max(-0.25, Math.min(0.95, keep));
   // a big hit can't reverse the ball, only a soft spinning landing can

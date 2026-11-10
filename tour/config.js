@@ -37,7 +37,7 @@ export const PUTTER = CLUBS.length - 1;
 // Short-game shots. maxCarry is how far the ghost ball can travel at the end
 // of the hold; launch/spin define the shape.
 export const SHOTS = {
-  bump:  { name:'Bump & Run', key:'bump',  launch:13, spin:2400, maxCarry:45, err:0.7,
+  bump:  { name:'Bump & Run', key:'bump',  launch:18, spin:3300, maxCarry:20, err:0.7,
            desc:'Low, lands early and releases' },
   pitch: { name:'Pitch',      key:'pitch', launch:30, spin:6800, maxCarry:80, err:0.9,
            desc:'Mid height, one hop and checks' },
@@ -69,7 +69,7 @@ export const SURF = {
   tee:     { roll:0.20, e:0.30, fric:0.30, grip:0.60 },
   fairway: { roll:0.20, e:0.30, fric:0.30, grip:0.65 },
   fringe:  { roll:0.13, e:0.24, fric:0.32, grip:0.85 },
-  green:   { roll:0.058,e:0.20, fric:0.34, grip:1.00 },
+  green:   { roll:0.058,e:0.20, fric:0.45, grip:1.00 },
   rough:   { roll:0.45, e:0.15, fric:0.55, grip:0.25 },
   deep:    { roll:0.80, e:0.08, fric:0.72, grip:0.10 },
   bunker:  { roll:2.20, e:0.03, fric:0.90, grip:0.00 },
@@ -79,14 +79,14 @@ export const SURF = {
 };
 
 export const DIFFICULTY = {
-  amateur: { name:'Amateur', meter:0.78, window:0.17, perfect:0.035, chipSpeed:0.80,
-             puttPreview:0.45, rollPreview:1.0, puttErr:0.0,  gimme:0.75, wind:0.7,
+  amateur: { name:'Amateur', meter:0.78, window:0.14, perfect:0.028, chipSpeed:0.80,
+             puttPreview:0.45, rollPreview:1.0, puttErr:0.3,  gimme:0.5, wind:0.7,
              desc:'Slower meter, putt preview, gimmes inside 2 ft' },
-  pro:     { name:'Pro',     meter:1.00, window:0.12, perfect:0.022, chipSpeed:1.00,
-             puttPreview:0.18, rollPreview:0.55, puttErr:0.35, gimme:0,   wind:1.0,
+  pro:     { name:'Pro',     meter:1.00, window:0.095, perfect:0.018, chipSpeed:1.00,
+             puttPreview:0.18, rollPreview:0.25, puttErr:0.8, gimme:0,   wind:1.0,
              desc:'The real thing. Short putt preview' },
-  tour:    { name:'Tour',    meter:1.25, window:0.085, perfect:0.014, chipSpeed:1.22,
-             puttPreview:0,    rollPreview:0,    puttErr:0.6,  gimme:0,   wind:1.25,
+  tour:    { name:'Tour',    meter:1.25, window:0.07, perfect:0.012, chipSpeed:1.22,
+             puttPreview:0,    rollPreview:0,    puttErr:1.2,  gimme:0,   wind:1.25,
              desc:'Fast meter, no aids, stronger wind' }
 };
 

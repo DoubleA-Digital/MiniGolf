@@ -301,6 +301,7 @@ function beginTurn(){
   world.setTracer(null);
   world.peg.visible = false;
   $('skipHint').classList.add('hidden');
+  $('shotCard').classList.remove('on');
   showHUD();
   refreshHUD();
 }
@@ -342,7 +343,7 @@ function suggestPace(){
   // uphill needs more, downhill less — a rough read, the player still decides
   const rise = h.pin.y - p.ball.y;
   // and a good putt finishes about a foot and a half past if it misses
-  return clamp(d + 0.45 + rise * 7, 0.3, 30);
+  return clamp(d + 0.35 + rise * 7, 0.3, 30);
 }
 
 function placeGolfer(){
@@ -424,7 +425,10 @@ function planChip(){
     const along = (r.rest.x - p.ball.x) * fx + (r.rest.z - p.ball.z) * fz;
     if (along < dPin) lo = mid; else hi = mid;
   }
-  S.chipTarget = clamp((lo + hi) / 2, 0.8, sh.maxCarry);
+  let t = (lo + hi) / 2;
+  if (settings.diff === 'pro') t = Math.round(t / 2) * 2;
+  else if (settings.diff === 'tour') t = dPin * (S.shotType === 'bump' ? 0.4 : S.shotType === 'flop' ? 0.92 : 0.75);
+  S.chipTarget = clamp(t, 0.8, sh.maxCarry);
 }
 
 function puttSpeed(pace){ return Math.sqrt(2 * SURF.green.roll * GRAV * Math.max(0.05, pace)); }
@@ -569,6 +573,7 @@ function launchShot(sim, kind, info){
     else world.burst(bp, 10, '#ffffff', { up: 2, speed: 1.5, life: 0.5, size: 3, dir, push: 2 });
   }
   hideControls();
+  $('skipHint').textContent = matchMedia('(pointer: coarse)').matches ? 'Tap to speed up' : 'Click or Space to speed up';
   $('skipHint').classList.toggle('hidden', kind === 'putt');
   refreshHUD();
 }
@@ -694,12 +699,15 @@ function findDrop(entry, from){
   const h = S.h;
   const dx = from.x - entry.x, dz = from.z - entry.z;
   const L = Math.hypot(dx, dz) || 1;
-  for (let d = 1; d < L; d += 0.75){
+  const ok = (x, z) => { const s = h.surfaceAt(x, z); return s !== 'water' && s !== 'ob' && s !== 'bunker'; };
+  // need two clear yards in a row, then drop in the middle of them
+  let run = 0;
+  for (let d = 0.5; d < L; d += 0.5){
     const x = entry.x + dx / L * d, z = entry.z + dz / L * d;
-    const s = h.surfaceAt(x, z);
-    if (s !== 'water' && s !== 'ob' && s !== 'bunker'){
-      const x2 = x + dx / L * 1.5, z2 = z + dz / L * 1.5;
-      return { x: x2, y: h.heightAt(x2, z2) + 0.0233, z: z2 };
+    run = ok(x, z) ? run + 0.5 : 0;
+    if (run >= 2.5){
+      const x2 = entry.x + dx / L * (d - 1), z2 = entry.z + dz / L * (d - 1);
+      if (ok(x2, z2)) return { x: x2, y: h.heightAt(x2, z2) + 0.0233, z: z2 };
     }
   }
   return { ...from };
@@ -806,7 +814,7 @@ function endRound(){
   S.phase = 'over';
   S.newBest = recordBest();
   stopAmbience();
-  awardPoints().finally(() => showCard(true));
+  awardPoints().finally(() => { if (S.phase === 'over' && !$('cardOv').classList.contains('hidden')) showCard(true); });
   showCard(true);
 }
 
@@ -871,10 +879,25 @@ function cameraAddress(){
     fov = 50;
   } else {
     pos = bv.clone().addScaledVector(f, -5.4).addScaledVector(r, 0.85);
-    pos.y = bv.y + 1.95;
+    pos.y = bv.y + 2.25;
     look = bv.clone().addScaledVector(f, 45);
-    look.y = bv.y + 2.6;
+    look.y = bv.y + 1.9;
     fov = 52;
+  }
+  // tall screens: tilt down so the ball sits clear of the control dock
+  if (innerWidth < innerHeight && !S.read && !S.overview) look.y -= 0.9 + (S.mode === 'putt' ? -0.5 : 0);
+  // never park the camera inside a tree canopy
+  if (!S.read && !S.overview){
+    const inTree = q => h.trees.some(t => {
+      if (t.kind === 'gorse' || t.kind === 'rock') return false;
+      const rr = t.kind === 'cactus' ? 0.7 : t.r * 1.1;
+      return Math.hypot(q.x - t.x, q.z - t.z) < rr && q.y > t.y + t.trunk * 0.7 && q.y < t.y + t.h + t.r * 1.6;
+    });
+    for (const [back, up] of [[3.4, 1.6], [2.2, 1.35], [1.4, 1.2]]){
+      if (!inTree(pos)) break;
+      pos = bv.clone().addScaledVector(f, -back).addScaledVector(r, 0.6);
+      pos.y = bv.y + up;
+    }
   }
   const gy = groundY(pos.x, pos.z);
   if (pos.y < gy + 0.6) pos.y = gy + 0.6;
@@ -1118,7 +1141,12 @@ function refreshHUD(){
   const tpEl = tag.querySelector('.topar');
   tpEl.textContent = fmtPar(tp);
   tpEl.className = 'topar ' + (tp < 0 ? 'u' : tp > 0 ? 'o' : '');
-  tag.querySelector('.stk').textContent = p.holed ? 'Holed' : `Stroke ${p.strokes + 1}`;
+  let pos = '';
+  if (S.players.length > 1){
+    const rank = S.players.filter(q => toPar(q) < tp).length + 1;
+    pos = ` · ${rank}${['st', 'nd', 'rd', 'th'][Math.min(3, rank - 1)]}`;
+  }
+  tag.querySelector('.stk').textContent = (p.holed ? 'Holed' : `Stroke ${p.strokes + 1}`) + pos;
 
   // multiplayer board
   const board = $('board');
@@ -1323,7 +1351,9 @@ function label(key, cls, html, p, show = true){
   if (s.behind || s.x < -50 || s.x > innerWidth + 50 || s.y < -20 || s.y > innerHeight + 40){ el.style.display = 'none'; return; }
   el.style.display = '';
   if (el._h !== html){ el.innerHTML = html; el._h = html; }
-  el.style.left = s.x + 'px'; el.style.top = s.y + 'px';
+  const m = 34;
+  el.style.left = Math.max(m, Math.min(innerWidth - m, s.x)) + 'px';
+  el.style.top = Math.max(m, s.y) + 'px';
 }
 function updateLabels(){
   const h = S.h, p = me();

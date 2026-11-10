@@ -32,6 +32,7 @@ export const isMuted = () => muted;
 
 function noise(dur, { type = 'bandpass', f = 1000, q = 1, vol = 0.3, attack = 0.002, decay, f2, when = 0 } = {}){
   const a = ctx(); if (!a) return;
+  vol = Math.max(0.0005, vol || 0);
   const t = a.currentTime + when;
   const src = a.createBufferSource();
   src.buffer = noiseBuf;
@@ -48,6 +49,7 @@ function noise(dur, { type = 'bandpass', f = 1000, q = 1, vol = 0.3, attack = 0.
 }
 function tone(freq, dur, { type = 'sine', vol = 0.2, attack = 0.002, f2, when = 0 } = {}){
   const a = ctx(); if (!a) return;
+  vol = Math.max(0.0005, vol || 0);
   const t = a.currentTime + when;
   const o = a.createOscillator();
   o.type = type; o.frequency.setValueAtTime(freq, t);

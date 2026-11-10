@@ -123,8 +123,8 @@ button{ font: inherit; color: inherit; }
 .lie-dot{ display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
 
 /* bottom controls */
-.bottom{ position: absolute; left: 50%; bottom: calc(16px + var(--safeB)); transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.bottom{ position: absolute; left: 250px; bottom: calc(16px + var(--safeB));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
 .bottom > *{ pointer-events: auto; }
 .modes{ display: flex; border-radius: 12px; padding: 3px; gap: 2px; }
 .modes button{ border: 0; background: transparent; padding: 7px 13px; border-radius: 9px; cursor: pointer;
@@ -226,7 +226,7 @@ button{ font: inherit; color: inherit; }
   pointer-events: none; text-transform: uppercase; }
 
 /* ================= intro card ================= */
-#intro{ position: fixed; left: 0; right: 0; top: 20%; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
+#intro{ position: fixed; left: 0; right: 0; top: auto; bottom: 16%; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
 #intro .ic{ display: flex; align-items: stretch; border-radius: 18px; overflow: hidden; opacity: 0;
   transform: translateY(14px) scale(.96); transition: opacity .4s, transform .6s cubic-bezier(.2,1.2,.3,1); }
 #intro.on .ic{ opacity: 1; transform: none; }
@@ -372,6 +372,10 @@ table.card td .sc{ display: inline-grid; place-items: center; width: 24px; heigh
   .mechip{ top: auto; bottom: calc(14px + var(--safeB)); right: 14px; }
   .help-grid{ grid-template-columns: 1fr; }
   .stats{ grid-template-columns: repeat(2, 1fr); }
+  .panel{ padding: 14px; }
+  table.card th, table.card td{ padding: 4px 0; font-size: 11.5px; min-width: 0; }
+  table.card td .sc{ width: 18px; height: 18px; }
+  table.card td:first-child, table.card th:first-child{ min-width: 52px; max-width: 64px; }
 
   .tl{ left: 10px; top: calc(10px + var(--safeT)); gap: 6px; }
   .hnum{ font-size: 24px; min-width: 40px; padding: 5px 8px 3px; }
@@ -383,7 +387,7 @@ table.card td .sc{ display: inline-grid; place-items: center; width: 24px; heigh
   .ptag .nm{ font-size: 13px; max-width: 96px; }
   .topar{ font-size: 12px; padding: 2px 7px; min-width: 28px; }
   .ptag .stk{ font-size: 11px; padding-right: 5px; }
-  .board{ display: none; }
+  .board{ display: none !important; }
 
   .tr{ right: 10px; top: calc(10px + var(--safeT)); gap: 6px; }
   .wind{ width: 58px; height: 58px; }
@@ -465,7 +469,7 @@ table.card td .sc{ display: inline-grid; place-items: center; width: 24px; heigh
 
   <div class="tr">
     <div class="wind glass" id="wind">
-      <svg viewBox="0 0 84 84"><g id="windArrow"><path d="M42 9 L50 24 L44 22 L44 34 L40 34 L40 22 L34 24 Z" fill="#ffcf4a"/></g>
+      <svg viewBox="0 0 84 84"><g id="windArrow"><path d="M42 2 L49 14 L44 13 L44 19 L40 19 L40 13 L35 14 Z" fill="#ffcf4a"/></g>
         <circle cx="42" cy="42" r="37" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1.5" stroke-dasharray="2 5"/></svg>
       <div class="wv"><b id="windMph">0</b><span>MPH</span></div>
     </div>

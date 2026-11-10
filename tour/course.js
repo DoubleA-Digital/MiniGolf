@@ -18,7 +18,7 @@ export function genHole(seed, par, themeKey, opts = {}){
   const noise = makeNoise(seed * 31 + 7);
 
   /* ---------- routing: control points of the centreline ---------- */
-  const target = par === 3 ? rr(140, 212) : par === 4 ? rr(345, 452) : rr(492, 578);
+  const target = par === 3 ? rr(140, 212) : par === 4 ? rr(345, 452) : rr(520, 600);
   const ctrl = [{ x: 0, z: 0 }];
   let heading = 0;                                   // radians, 0 = straight up (-z)
   const push = (d, ang) => {
@@ -197,7 +197,7 @@ export function genHole(seed, par, themeKey, opts = {}){
       const c = atS(s);
       const side = rnd() < 0.5 ? -1 : 1;
       const r = rr(16, 28);
-      const off = side * (fairW(s) + r * rr(0.6, 1.0));
+      const off = side * (fairW(s) + r * rr(0.9, 1.3));
       ponds.push({ circles: blob(c.x + c.nx * off, c.z + c.nz * off, r, 3, 1.4) });
     } else {
       const side = rnd() < 0.5 ? -1 : 1;

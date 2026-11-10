@@ -73,38 +73,52 @@ being stored, keeping a row a few KB rather than a few MB.
 The identity lives in `localStorage`, so clearing site data starts a new
 profile. The leaderboard is shared; the identity is not portable across devices.
 
-## Tour Mode
+## Tour Golf
 
-`tour.html` is a second, different game reached from the menu: full-swing golf
-rather than mini golf, taking its cue from PGA Tour 98.
+`tour.html` (modules in `tour/`) is a second, separate game reached from the
+menu: full 3D championship golf built on three.js.
 
-- **Three-click swing.** Click to start the sweep, again to set power, a third
-  time on the way back to set accuracy. Stopping dead on the line is pure; a
-  late click hooks it, and a mishit leaks distance as well as direction.
-- **Ten clubs** from driver to putter, auto-suggested for the distance but
-  yours to override. Partial power is how you play anything short.
-- **Terrain that matters.** Fairway, rough, deep rough, bunkers, trees and
-  water all change what a swing is worth. Water and out of bounds cost a
-  stroke and drop you back down the line.
-- **Wind** stretches or shortens the carry and drifts the ball sideways.
-- **Putting** switches to a tight view of the green and reads power as a
-  fraction of the distance to the hole, so ~75% is dead weight from any range.
-- 1–4 players pass-and-play, sharing the same profile, points and leaderboard
-  as mini golf.
+- **Three courses:** Whispering Pines (parkland), Saltmarsh Links (windy, pot
+  bunkers, fescue) and Red Mesa (desert target golf). Every hole is generated
+  from a seed. Rounds are 9 or 18 holes, at Amateur, Pro or Tour difficulty.
+- **Three different skills:**
+  - *Full swing:* the PGA Tour 98 three-click arc meter. The golfer's
+    backswing follows the meter live, and a strike-point dot shapes a draw,
+    fade, high or low shot.
+  - *Short game:* inside 80 yds you choose Bump & Run, Pitch, Flop or Splash
+    and set a landing spot. Hold the button and a ghost ball travels out;
+    release it on the ring.
+  - *Putting:* pull back and release, with pace in feet. Press `R` to read
+    the green: a grid plus dots that flow downhill.
+- **Real ball physics** (`physics.js`):
+  - Drag and Magnus lift from the spin axis, plus wind.
+  - Bounces off the true terrain normal, with spin that bites (wedges check
+    and spin back).
+  - Rolling feels the slope at 5/7 g, with each surface's rolling resistance.
+  - The cup only takes a ball slow enough to drop half its radius while it
+    is over the hole.
+- **Broadcast camera:** a hole flyover, a chase cam, a cut to the landing
+  spot, a tracer and a live yardage counter.
+- **Rules:** water and OB penalties, stroke and distance, honours, and
+  farthest-from-the-hole plays first. 1–4 players pass-and-play.
+- **Stats and progression:** fairways, greens in regulation, putts, longest
+  drive and personal bests. It shares the Mini Golf profile, points and
+  leaderboard.
 
-Holes are analytic rather than tiled — a centreline corridor plus circles for
-hazards — which suits 400-yard holes far better than a grid would.
+Each hole is painted in a Web Worker (`worker.js`, `prepare.js`) from the same
+`surfaceAt()` the physics uses, so what you see is what the ball feels. The
+next hole is prepared while you play the current one.
 
-Difficulty was calibrated by simulating rounds at four timing precisions:
+Balance was tuned with a headless bot that replays the game's shot logic
+(Pro, 9 holes, perfect green reading):
 
-| Timing window | Score (par 36) |
+| Player | Score |
 | --- | --- |
-| 22ms (frame-perfect) | −7.5 |
-| 50ms (skilled) | −1.7 |
-| 100ms (casual) | +6.0 |
-| 150ms (sloppy) | +14.4 |
+| Good | −2 to −3.5 |
+| Average | about even |
+| Casual | +4 to +7 |
 
-No hole hit the 12-stroke cap at any level.
+Humans read greens worse than the bot, so expect a few shots higher.
 
 ## Playing
 
