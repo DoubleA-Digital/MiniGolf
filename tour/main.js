@@ -102,14 +102,58 @@ const S = {
 };
 const me = () => S.players[S.cur];
 
+// game-time timers: they stop while the game is paused and vanish with the round
+const timers = [];
+function later(fn, ms){ timers.push({ t: ms / 1000, fn }); }
+function stepTimers(dt){
+  for (let i = 0; i < timers.length; i++){
+    const tm = timers[i];
+    tm.t -= dt;
+    if (tm.t <= 0){ timers.splice(i--, 1); tm.fn(); }
+  }
+}
+
 /* ============================================================
    WORLD
    ============================================================ */
 const world = new World($('gl'));
 world.setQuality(settings.quality);
 const cam = { pos: new THREE.Vector3(0, 30, 60), look: new THREE.Vector3(0, 0, 0),
-              tPos: new THREE.Vector3(), tLook: new THREE.Vector3(), k: 4, fov: 50, tFov: 50, cut: false };
+              tPos: new THREE.Vector3(), tLook: new THREE.Vector3(), k: 4, fov: 50, tFov: 50, cut: false, shake: 0 };
 const otherBallGeo = new THREE.SphereGeometry(0.0233, 14, 10);
+
+/* Hole surfaces are painted in a worker, and the next hole is prepared
+   while the current one is being played. */
+const prepWorker = (() => {
+  try{ return new Worker(new URL('./worker.js', import.meta.url), { type: 'module' }); }catch(e){ return null; }
+})();
+const prepWaiting = new Map(), prepCache = new Map();
+let prepId = 0;
+if (prepWorker){
+  prepWorker.onmessage = e => {
+    const res = prepWaiting.get(e.data.id);
+    if (res){ prepWaiting.delete(e.data.id); res(e.data.ok ? e.data.prep : null); }
+  };
+  prepWorker.onerror = () => { for (const res of prepWaiting.values()) res(null); prepWaiting.clear(); };
+}
+function requestPrep(seed, par, theme){
+  const key = `${seed}|${par}|${theme}|${settings.quality}`;
+  if (prepCache.has(key)) return prepCache.get(key);
+  const pr = !prepWorker ? Promise.resolve(null) : new Promise(res => {
+    const id = ++prepId;
+    prepWaiting.set(id, res);
+    prepWorker.postMessage({ id, seed, par, theme, quality: settings.quality });
+    setTimeout(() => { if (prepWaiting.has(id)){ prepWaiting.delete(id); res(null); } }, 25000);
+  });
+  prepCache.set(key, pr);
+  return pr;
+}
+function takePrep(seed, par, theme){
+  const pr = requestPrep(seed, par, theme);
+  prepCache.delete(`${seed}|${par}|${theme}|${settings.quality}`);
+  return pr;
+}
+const holeSeed = i => S.seed + i * 7919 + 13;
 
 /* speed solving is the expensive bit, so remember the answers */
 const speedCache = new Map();
@@ -149,6 +193,7 @@ function startRound(){
     };
   });
   S.order = S.players.map((_, i) => i);
+  requestPrep(holeSeed(0), S.pars[0], S.theme);
   $('menu').classList.add('hidden');
   $('meChip').classList.add('hidden');
   loadHole(0);
@@ -168,12 +213,16 @@ function loadHole(i){
   S.phase = 'loading';
   hideHUD();
   fade(true);
-  // let the fade land before the (synchronous) build
-  setTimeout(() => {
-    const h = genHole(S.seed + i * 7919 + 13, S.pars[i], S.theme);
+  const round = S.seed;
+  const prepP = takePrep(holeSeed(i), S.pars[i], S.theme);
+  // let the fade land, and the worker finish, before building
+  Promise.all([prepP, new Promise(r => setTimeout(r, 330))]).then(([prep]) => {
+    if (S.seed !== round || S.phase !== 'loading') return;
+    const h = genHole(holeSeed(i), S.pars[i], S.theme);
     h.wind.mph = Math.round(h.wind.mph * S.D.wind);
     S.h = h;
-    world.buildHole(h);
+    world.buildHole(h, prep);
+    if (i + 1 < S.pars.length) requestPrep(holeSeed(i + 1), S.pars[i + 1], S.theme);
     buildMinimap();
     for (const p of S.players){
       p.strokes = 0; p.holed = false; p.lie = 'tee'; p.under = null; p.prev = null; p.girDone = false;
@@ -191,7 +240,7 @@ function loadHole(i){
     startAmbience(h.wind.mph);
     fade(false);
     startFlyover();
-  }, 330);
+  });
 }
 
 function startFlyover(){
@@ -250,6 +299,7 @@ function beginTurn(){
   placeGolfer();
   S.previewDirty = true;
   world.setTracer(null);
+  world.peg.visible = false;
   $('skipHint').classList.add('hidden');
   showHUD();
   refreshHUD();
@@ -291,7 +341,8 @@ function suggestPace(){
   const d = hdist(p.ball, h.pin);
   // uphill needs more, downhill less — a rough read, the player still decides
   const rise = h.pin.y - p.ball.y;
-  return clamp(d + rise * 7, 0.3, 30);
+  // and a good putt finishes about a foot and a half past if it misses
+  return clamp(d + 0.45 + rise * 7, 0.3, 30);
 }
 
 function placeGolfer(){
@@ -310,7 +361,7 @@ function placeGolfer(){
    ============================================================ */
 function ballStart(){
   const p = me();
-  return { x: p.ball.x, y: S.h.heightAt(p.ball.x, p.ball.z) + 0.0233 + (p.lie === 'tee' && S.club === 0 ? 0.03 : 0), z: p.ball.z };
+  return { x: p.ball.x, y: S.h.heightAt(p.ball.x, p.ball.z) + 0.0233 + (p.lie === 'tee' && S.mode === 'full' ? 0.03 : 0), z: p.ball.z };
 }
 
 // error > 0 slices (starts right, curves right); < 0 hooks
@@ -421,10 +472,11 @@ function fireFull(mAt){
   M.quality = perfect ? 1 : Math.max(0, 1 - Math.abs(acc));
   const st = buildFull(M.power, err);
   const club = CLUBS[S.club];
+  const v0 = Math.hypot(st.v.x, st.v.y, st.v.z);       // simulate() consumes the state
   const shot = simulate(S.h, st, { wind: windVec(S.h), trees: true });
   S.follow = { t: 0, dur: 0.75, style: 'full' };
   launchShot(shot, 'full', { club: club.name, power: M.power, tag: M.label, quality: M.quality,
-                             kind: clubKind(club.id), speed: Math.hypot(st.v.x, st.v.y, st.v.z) });
+                             kind: clubKind(club.id), speed: v0 });
 }
 
 function holdStart(){
@@ -462,10 +514,11 @@ function holdRelease(){
   const s0 = -Math.min(1, H.g / sh.maxCarry) * 0.95;
   S.down = { t: 0, dur: 0.17, from: s0, style: 'chip', fire: () => {
     const st = buildChip(Math.max(0.5, carry), yawErr);
+    const v0 = Math.hypot(st.v.x, st.v.y, st.v.z);
     const shot = simulate(S.h, st, { wind: windVec(S.h), trees: true });
     S.follow = { t: 0, dur: 0.55, style: 'chip', to: 0.6 };
     launchShot(shot, 'chip', { club: sh.name, tag, quality: tag === 'PERFECT' ? 1 : 0.7,
-                               kind: S.shotType === 'bump' ? 'iron' : 'wedge', speed: Math.hypot(st.v.x, st.v.y, st.v.z) });
+                               kind: S.shotType === 'bump' ? 'iron' : 'wedge', speed: v0 });
   } };
 }
 
@@ -500,6 +553,11 @@ function launchShot(sim, kind, info){
              landT: sim.carryPt ? sim.carryPt.t : 0, cut: false, speed: 1, done: false, landCam: null,
              side: Math.random() < 0.5 ? -1 : 1, holedAt: null };
   sfx.hit(info.kind, info.quality ?? 1);
+  if (kind === 'full'){
+    const big = info.kind === 'driver' || info.kind === 'wood';
+    cam.shake = big ? 0.09 : 0.05;
+    cam.fov += big ? 4 : 2.5;
+  }
   // impact debris
   const dir = { x: Math.sin(yaw), z: -Math.cos(yaw) };
   const bp = { x: p.ball.x, y: h.heightAt(p.ball.x, p.ball.z), z: p.ball.z };
@@ -523,7 +581,14 @@ function stepShot(dt){
   const sh = S.shot;
   if (!sh || sh.done) return;
   const sim = sh.sim, h = S.h;
-  sh.t = Math.min(sh.dur, sh.t + dt * sh.speed);
+  let rate = sh.speed;
+  // the flight plays in real time, the run-out a little quicker
+  if (sh.kind !== 'putt' && sim.carryPt && sh.t > sh.landT + 0.4) rate *= 1.7;
+  if (sim.result === 'holed' && sh.kind !== 'full' && !reduceMotion){
+    const left = sh.dur - sh.t;
+    if (left < 0.9 && left > 0) rate = Math.min(rate, 0.45);
+  }
+  sh.t = Math.min(sh.dur, sh.t + dt * rate);
   samplePath(sim, sh.t, tmpP);
   // events
   while (sh.ev < sim.events.length && sim.events[sh.ev].t <= sh.t){
@@ -558,7 +623,7 @@ function stepShot(dt){
   if (sh.t >= sh.dur){
     sh.done = true;
     $('skipHint').classList.add('hidden');
-    setTimeout(finishShot, sim.result === 'holed' ? 250 : 650);
+    later(finishShot, sim.result === 'holed' ? 250 : 650);
   }
 }
 
@@ -609,7 +674,7 @@ function finishShot(){
   // gimme on the easy setting
   if (S.D.gimme && restLie === 'green' && dPin <= S.D.gimme){
     shotCard(sh, sim, tag, tagClass, dPin);
-    setTimeout(() => { p.strokes++; p.putts[S.holeIdx]++; toast('Gimme', 'Inside two feet'); holeOut(sh, true); }, 700);
+    later(() => { p.strokes++; p.putts[S.holeIdx]++; toast('Gimme', 'Inside two feet'); holeOut(sh, true); }, 700);
     return;
   }
   if (p.strokes >= STROKE_CAP){ pickUp(); return; }
@@ -621,7 +686,7 @@ function finishShot(){
   }
   shotCard(sh, sim, tag, tagClass, dPin);
   S.phase = 'result';
-  setTimeout(nextTurn, sim.result === 'rest' ? 1500 : 1900);
+  later(nextTurn, sim.result === 'rest' ? 1500 : 1900);
 }
 
 // back along the line of flight until the ground is playable
@@ -660,7 +725,7 @@ function holeOut(sh, gimme){
   else if (sh && sh.kind === 'putt' && dPutt > 20) sfx.crowd(0.7, 2);
   S.phase = 'result';
   hideControls();
-  setTimeout(nextTurn, 2600);
+  later(nextTurn, 2600);
   refreshHUD();
 }
 function pickUp(){
@@ -670,7 +735,7 @@ function pickUp(){
   p.marker.visible = false;
   banner('Picked up', `${p.name} · ${STROKE_CAP}`, false);
   S.phase = 'result';
-  setTimeout(nextTurn, 1800);
+  later(nextTurn, 1800);
 }
 
 function nextTurn(){
@@ -687,7 +752,7 @@ function nextTurn(){
   world.setTracer(null);
   if (switching && S.players.length > 1){
     fade(true);
-    setTimeout(() => { cam.cut = true; beginTurn(); fade(false); toast(`${next.name} is up`, `${Math.round(hdist(next.ball, S.h.pin))} yards out`); }, 300);
+    later(() => { cam.cut = true; beginTurn(); fade(false); toast(`${next.name} is up`, `${Math.round(hdist(next.ball, S.h.pin))} yards out`); }, 300);
   } else {
     cam.cut = S.shot && S.shot.kind !== 'putt' && hdist(S.shot.from, next.ball) > 40;
     beginTurn();
@@ -724,8 +789,22 @@ function toPar(p){
 }
 function totalStrokes(p){ return p.scores.reduce((a, b) => a + (b || 0), 0); }
 
+const bestKey = () => `${S.theme}|${S.pars.length}|${settings.diff}`;
+function loadBests(){ try{ return JSON.parse(localStorage.getItem('tour_best') || '{}'); }catch(e){ return {}; } }
+function recordBest(){
+  const p0 = S.players[0];
+  if (p0.scores.some(x => x === null)) return false;
+  const bests = loadBests(), k = bestKey(), tp = toPar(p0);
+  const prev = bests[k];
+  if (prev && prev.toPar <= tp) return false;
+  bests[k] = { toPar: tp, strokes: totalStrokes(p0), date: Date.now() };
+  try{ localStorage.setItem('tour_best', JSON.stringify(bests)); }catch(e){}
+  return true;
+}
+
 function endRound(){
   S.phase = 'over';
+  S.newBest = recordBest();
   stopAmbience();
   awardPoints().finally(() => showCard(true));
   showCard(true);
@@ -799,7 +878,7 @@ function cameraAddress(){
   }
   const gy = groundY(pos.x, pos.z);
   if (pos.y < gy + 0.6) pos.y = gy + 0.6;
-  cam.tPos.copy(pos); cam.tLook.copy(look); cam.tFov = fov;
+  cam.tPos.copy(pos); cam.tLook.copy(look); cam.tFov = portraitFov(fov);
   cam.k = S.read || S.overview ? 3 : 5;
 }
 
@@ -815,7 +894,7 @@ function cameraFlight(dt){
     base.y = start.y + 1.05 + Math.min(28, d) * 0.075;
     cam.tPos.copy(base);
     cam.tLook.copy(b);
-    cam.k = 3; cam.tFov = 46;
+    cam.k = 3; cam.tFov = portraitFov(46);
     return;
   }
   const carry = sim.carry;
@@ -839,7 +918,7 @@ function cameraFlight(dt){
     }
     cam.tPos.copy(sh.landCam);
     cam.tLook.copy(b);
-    cam.k = 8; cam.tFov = 42;
+    cam.k = 8; cam.tFov = portraitFov(42);
     // ease the camera forward if the ball runs a long way
     const toBall = hdist(sh.landCam, b);
     if (toBall > 45) cam.tPos.lerp(V3(b.x, sh.landCam.y, b.z), 0.02);
@@ -851,7 +930,7 @@ function cameraFlight(dt){
       want.y = Math.max(start.y, groundY(want.x, want.z)) + 2.6 + along * 0.06;
       cam.tPos.copy(want);
       cam.tLook.copy(b).lerp(V3(h.pin.x, h.pin.y, h.pin.z), 0.3);
-      cam.k = 3; cam.tFov = 50;
+      cam.k = 3; cam.tFov = portraitFov(50);
       return;
     }
     // chase from behind and above
@@ -862,7 +941,7 @@ function cameraFlight(dt){
     if (sh.t < 0.35){ want.lerp(fromTee.clone().addScaledVector(f, -5).add(V3(0, 2, 0)), 1 - sh.t / 0.35); }
     cam.tPos.copy(want);
     cam.tLook.copy(b);
-    cam.k = sh.kind === 'chip' ? 3.5 : 6; cam.tFov = 52;
+    cam.k = sh.kind === 'chip' ? 3.5 : 6; cam.tFov = portraitFov(52);
     if (sh.kind === 'chip'){
       // keep the pin in frame on short shots
       cam.tLook.lerp(V3(h.pin.x, h.pin.y, h.pin.z), 0.25);
@@ -883,7 +962,7 @@ function cameraFlyover(dt){
   pos.y = groundY(pos.x, pos.z) + lerp(46, 20, u);
   const look = V3(lerp(ahead.x, h.pin.x, u * u), 0, lerp(ahead.z, h.pin.z, u * u));
   look.y = groundY(look.x, look.z);
-  cam.tPos.copy(pos); cam.tLook.copy(look); cam.tFov = 55; cam.k = 6;
+  cam.tPos.copy(pos); cam.tLook.copy(look); cam.tFov = portraitFov(55); cam.k = 6;
   if (F.t >= F.dur) endFlyover();
 }
 
@@ -894,7 +973,13 @@ function cameraMenu(){
   const R = 62;
   cam.tPos.set(c.x + Math.cos(t) * R, groundY(h.greenC.x, h.greenC.z) + 22, c.z + Math.sin(t) * R);
   cam.tLook.set(h.pin.x, h.pin.y + 2, h.pin.z);
-  cam.tFov = 50; cam.k = 2;
+  cam.tFov = portraitFov(50); cam.k = 2;
+}
+
+// tall screens need a wider vertical field of view to see the golfer and the target
+function portraitFov(f){
+  const asp = innerWidth / innerHeight;
+  return asp < 1 ? Math.min(82, f + (1 - asp) * 34) : f;
 }
 
 function applyCamera(dt){
@@ -907,6 +992,11 @@ function applyCamera(dt){
   }
   const c = world.camera;
   c.position.copy(cam.pos);
+  if (cam.shake > 0.001 && !reduceMotion){
+    c.position.x += (Math.random() - 0.5) * cam.shake;
+    c.position.y += (Math.random() - 0.5) * cam.shake;
+    cam.shake *= Math.exp(-dt * 9);
+  }
   c.lookAt(cam.look);
   if (Math.abs(c.fov - cam.fov) > 0.01){ c.fov = cam.fov; c.updateProjectionMatrix(); }
 }
@@ -1000,7 +1090,7 @@ function updatePreview(){
 function showHUD(){ $('hud').classList.remove('hidden'); }
 function hideHUD(){ $('hud').classList.add('hidden'); $('labels').innerHTML = ''; labelEls.clear(); }
 function hideControls(){
-  for (const id of ['modes', 'clubSel', 'shotTypes', 'strike', 'meter', 'holdBtn', 'pace', 'actHint', 'bRead'])
+  for (const id of ['modes', 'clubSel', 'shotTypes', 'strike', 'meter', 'holdBtn', 'pace', 'actHint', 'bRead', 'shotInfo'])
     $(id).classList.add('hidden');
   world.setRing(world.target, null); world.setRing(world.ghost, null);
   world.dots.clear(); world.dots.commit();
@@ -1079,6 +1169,7 @@ function refreshHUD(){
   $('holdBtn').classList.toggle('hidden', !address || S.mode !== 'chip');
   $('pace').classList.toggle('hidden', !address || S.mode !== 'putt');
   $('actHint').classList.toggle('hidden', !address);
+  $('shotInfo').classList.toggle('hidden', !address);
   $('bRead').classList.toggle('hidden', !address || S.mode !== 'putt');
   $('bRead').classList.toggle('on', S.read);
   $('bMap').classList.toggle('on', S.overview);
@@ -1253,6 +1344,11 @@ function updateLabels(){
   if (address && S.mode === 'chip' && S.hold.on && S.preview && S.preview.ghost){
     label('ghost', 'ghost', `${S.hold.g.toFixed(1)}<small>y</small>`, { ...S.preview.ghost, y: S.preview.ghost.y + 0.3 }, true);
   } else label('ghost', 'ghost', '', null, false);
+  // live yardage on the ball in flight, like a broadcast tracer
+  if (S.phase === 'flight' && S.shot && !S.shot.done && S.shot.kind !== 'putt'){
+    const dd = hdist(S.shot.from, tmpP);
+    label('live', 'live', `${Math.round(dd)}<small>y</small>`, { x: tmpP.x, y: tmpP.y + 0.4, z: tmpP.z }, dd > 3);
+  } else label('live', 'live', '', null, false);
   for (const q of S.players){
     const show = q !== p && !q.holed && S.phase !== 'intro';
     label('pl' + S.players.indexOf(q), 'pl', `<i style="background:${q.color}"></i>${esc(q.name)}`, { x: q.ball.x, y: q.ball.y + 0.35, z: q.ball.z }, show);
@@ -1385,7 +1481,8 @@ function shotCard(sh, sim, tag, tagClass, dPin){
   const lieName = (LIES[me().lie] || {}).name || '';
   const stats = sh.kind === 'putt'
     ? [[`${Math.round(sim.total * YD_FT)}`, 'FT ROLLED'], [`${dPin * YD_FT < 10 ? (dPin * YD_FT).toFixed(1) : Math.round(dPin * YD_FT)}`, 'FT LEFT']]
-    : [[`${Math.round(sim.carry)}`, 'CARRY'], [`${Math.round(sim.total)}`, 'TOTAL'], [`${Math.round(sim.apex)}`, 'APEX'],
+    : [...(sh.kind === 'full' ? [[`${Math.round(sh.info.speed / MPH)}`, 'BALL MPH']] : []),
+       [`${Math.round(sim.carry)}`, 'CARRY'], [`${Math.round(sim.total)}`, 'TOTAL'], [`${Math.round(sim.apex)}`, 'APEX'],
        [dPin < 30 ? `${Math.round(dPin * YD_FT)}'` : `${Math.round(dPin)}`, dPin < 30 ? 'TO PIN FT' : 'TO PIN']];
   $('shotCard').innerHTML = (tag ? `<div class="sc-tag ${tagClass}">${tag}</div>` : '') +
     `<div class="sc-stat"><b style="font-size:15px">${esc(sh.info.club)}</b><span>${esc(lieName.toUpperCase())}</span></div>` +
@@ -1438,9 +1535,11 @@ function showCard(final){
     $('cardTitle').innerHTML = S.players.length > 1
       ? (tied ? 'A tie at the top' : `${esc(w.name)} wins`)
       : `${totalStrokes(p0)} · ${fmtPar(toPar(p0))}`;
-    $('cardSub').textContent = `${THEMES[S.theme].name} · ${S.D.name}` + (S.lastPoints ? ` · +${S.lastPoints} points` : '');
+    $('cardSub').textContent = `${THEMES[S.theme].name} · ${S.D.name}` + (S.lastPoints ? ` · +${S.lastPoints} points` : '') +
+      (S.newBest ? ' · New personal best!' : '');
+    if (S.newBest){ sfx.fanfare(); }
     $('cardBtns').innerHTML = '<button class="btn primary" id="cbAgain">Play again</button><button class="btn ghost" id="cbMenu">Main menu</button>';
-    $('cbAgain').onclick = () => { $('cardOv').classList.add('hidden'); cleanupPlayers(); startRound(); };
+    $('cbAgain').onclick = () => { $('cardOv').classList.add('hidden'); timers.length = 0; cleanupPlayers(); startRound(); };
     $('cbMenu').onclick = () => { $('cardOv').classList.add('hidden'); toMenu(); };
   } else {
     $('cardTitle').textContent = 'Scorecard';
@@ -1710,8 +1809,13 @@ const COURSE_ART = {
     <path d="M80 51 V38" stroke="#fff" stroke-width="1"/><path d="M80 38 l6 2 -6 2z" fill="#fff"/></svg>`
 };
 function paintMenu(){
-  $('courses').innerHTML = Object.entries(THEMES).map(([k, t]) => `<button class="course ${k === settings.theme ? 'on' : ''}" data-k="${k}">
-    <div class="art">${COURSE_ART[k]}</div><div class="cinfo"><b>${t.name}</b><span>${t.tag}</span></div></button>`).join('');
+  const bests = loadBests();
+  $('courses').innerHTML = Object.entries(THEMES).map(([k, t]) => {
+    const b = bests[`${k}|${settings.holes}|${settings.diff}`];
+    return `<button class="course ${k === settings.theme ? 'on' : ''}" data-k="${k}">
+    <div class="art">${COURSE_ART[k]}${b ? `<em class="best">BEST ${fmtPar(b.toPar)}</em>` : ''}</div>
+    <div class="cinfo"><b>${t.name}</b><span>${t.tag}</span></div></button>`;
+  }).join('');
   $('courseDesc').textContent = THEMES[settings.theme].desc;
   $('courses').querySelectorAll('.course').forEach(b => b.onclick = () => {
     if (settings.theme === b.dataset.k) return;
@@ -1758,15 +1862,23 @@ $('bTeeOff').onclick = () => { sfx.select(); startRound(); };
 $('bHelp').onclick = () => $('helpOv').classList.remove('hidden');
 $('bBack').onclick = () => { location.href = 'index.html'; };
 
+let attractFor = null;
 function buildAttract(){
-  const h = genHole(4242 + Object.keys(THEMES).indexOf(settings.theme) * 101, 4, settings.theme);
-  S.h = h;
-  S.theme = settings.theme;
-  world.buildHole(h);
-  world.placeBall({ x: h.pin.x + 1.2, y: h.heightAt(h.pin.x + 1.2, h.pin.z + 0.8) + 0.0233, z: h.pin.z + 0.8 });
-  cam.cut = true;
+  const theme = settings.theme;
+  const seed = 4242 + Object.keys(THEMES).indexOf(theme) * 101;
+  attractFor = theme;
+  return takePrep(seed, 4, theme).then(prep => {
+    if (S.phase !== 'menu' || attractFor !== theme) return;
+    const h = genHole(seed, 4, theme);
+    S.h = h;
+    S.theme = theme;
+    world.buildHole(h, prep);
+    world.placeBall({ x: h.pin.x + 1.2, y: h.heightAt(h.pin.x + 1.2, h.pin.z + 0.8) + 0.0233, z: h.pin.z + 0.8 });
+    cam.cut = true;
+  });
 }
 function toMenu(){
+  timers.length = 0;
   cleanupPlayers();
   S.players = [];
   S.phase = 'menu';
@@ -1779,7 +1891,7 @@ function toMenu(){
   $('menu').classList.remove('hidden');
   $('meChip').classList.remove('hidden');
   paintMenu();
-  buildAttract();
+  return buildAttract();
 }
 
 /* ============================================================
@@ -1792,9 +1904,10 @@ function frame(now){
   last = now;
   S.t += dt;
   if (S.paused){ world.render(); return; }
+  stepTimers(dt);
   const p = me();
 
-  if (S.phase === 'menu') cameraMenu();
+  if (S.phase === 'menu' || S.phase === 'holeEnd' || S.phase === 'over') cameraMenu();
   else if (S.phase === 'intro' && S.fly) cameraFlyover(dt);
   else if (S.phase === 'address' || S.phase === 'result'){
     if (S.phase === 'address'){
@@ -1805,6 +1918,9 @@ function frame(now){
       if (S.previewDirty){ S.previewDirty = false; updatePreview(); }
       cameraAddress();
       world.placeBall(p.ball);
+      const onTee = p.lie === 'tee' && S.mode === 'full';
+      world.peg.visible = onTee;
+      if (onTee) world.peg.position.set(p.ball.x, S.h.heightAt(p.ball.x, p.ball.z) + 0.02, p.ball.z);
     }
   } else if (S.phase === 'flight') stepShot(dt);
 
@@ -1851,10 +1967,10 @@ async function boot(){
   paintChip();
   refreshProfile();
   try{ await document.fonts.ready; }catch(e){}
-  toMenu();
   requestAnimationFrame(t => { last = t; frame(t); });
-  setTimeout(() => $('loading').classList.add('fade'), 200);
-  setTimeout(() => $('loading').remove(), 900);
+  await toMenu();
+  $('loading').classList.add('fade');
+  setTimeout(() => $('loading').remove(), 700);
   // pre-warm the speed solver for every club at full power
   setTimeout(() => { for (const c of CLUBS.slice(0, PUTTER)) cachedSpeed(c.carry, c.launch, c.spin); }, 400);
 }

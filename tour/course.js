@@ -115,14 +115,14 @@ export function genHole(seed, par, themeKey, opts = {}){
 
   // Green contours: a tilt rising away from the approach, plus a few humps.
   const tiltAng = Math.atan2(approach.z, approach.x) + rr(-0.9, 0.9);
-  const tiltMag = rr(0.007, 0.02);
+  const tiltMag = rr(0.004, 0.013);
   const tilt = { x: Math.cos(tiltAng) * tiltMag, z: Math.sin(tiltAng) * tiltMag };
   const humps = [];
   const nh = 1 + Math.floor(rnd() * 3);
   for (let i = 0; i < nh; i++){
     const th = rnd() * TAU, rho = greenR(th) * rr(0, 0.85);
     const sig = rr(3.5, 7);
-    const amp = (rnd() < 0.5 ? -1 : 1) * Math.min(rr(0.1, 0.3), sig * 0.045);
+    const amp = (rnd() < 0.5 ? -1 : 1) * Math.min(rr(0.08, 0.24), sig * 0.032);
     humps.push({ x: greenC.x + Math.cos(th) * rho, z: greenC.z + Math.sin(th) * rho, amp, sig });
   }
 
@@ -427,7 +427,7 @@ export function genHole(seed, par, themeKey, opts = {}){
     const rho = greenR(th) * rr(0.15, 0.66);
     const x = greenC.x + Math.cos(th) * rho, z = greenC.z + Math.sin(th) * rho;
     const g = slopeAt(x, z);
-    if (Math.hypot(g.x, g.z) < 0.024) pin = { x, z };
+    if (Math.hypot(g.x, g.z) < 0.017) pin = { x, z };
   }
   if (!pin) pin = { x: greenC.x, z: greenC.z };
   pin.y = heightAt(pin.x, pin.z);

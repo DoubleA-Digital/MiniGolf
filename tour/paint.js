@@ -7,14 +7,12 @@ import { makeNoise, smooth, clamp } from './noise.js';
 
 const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 
-export function paintRegion(h, region, ppy, opts = {}){
+/* The per-pixel pass. Pure, so it can run in a worker. */
+export function paintPixels(h, region, ppy, opts = {}){
   const T = h.T;
   const W = Math.max(8, Math.round((region.maxX - region.minX) * ppy));
   const D = Math.max(8, Math.round((region.maxZ - region.minZ) * ppy));
-  const cv = Object.assign(document.createElement('canvas'), { width: W, height: D });
-  const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(W, D);
-  const px = img.data;
+  const px = new Uint8ClampedArray(W * D * 4);
   const nz = makeNoise(h.seed * 13 + 5);
 
   const C = {
@@ -99,7 +97,17 @@ export function paintRegion(h, region, ppy, opts = {}){
       px[o + 3] = Math.round(255 * clamp(e, 0, 1));
     }
   }
-  ctx.putImageData(img, 0, 0);
+  return { W, D, data: px };
+}
+
+/* Put painted pixels on a canvas and add the soft tree shadows. */
+export function paintRegion(h, region, ppy, opts = {}, pre){
+  const T = h.T;
+  const p = pre || paintPixels(h, region, ppy, opts);
+  const { W, D } = p;
+  const cv = Object.assign(document.createElement('canvas'), { width: W, height: D });
+  const ctx = cv.getContext('2d');
+  ctx.putImageData(new ImageData(p.data, W, D), 0, 0);
 
   // baked tree shadows (soft, offset away from the sun)
   if (!opts.noShadows){

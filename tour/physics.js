@@ -12,6 +12,7 @@ import { gradAt } from './course.js';
 const DT = 1 / 240;
 const SAMPLE = 1 / 60;
 const ROLL_K = 5 / 7;
+const DROP_T = Math.sqrt(2 * BALL_R / G);   // time to fall half a ball
 
 export function windVec(hole, scale = 1){
   const s = hole.wind.mph * MPH * scale;
@@ -207,8 +208,13 @@ export function simulate(hole, st, opts = {}){
         const d = Math.hypot(ox + sx * k - pin.x, oz + sz * k - pin.z);
         if (d < CUP_R){
           if (!cupCooldown){
-            const f = d / CUP_R;
-            const vmax = 1.9 * (1 - 0.65 * f * f);
+            // how far off centre the ball's line of travel passes
+            const ux = sx / Math.sqrt(L2), uz = sz / Math.sqrt(L2);
+            const b = Math.abs(ux * (pin.z - oz) - uz * (pin.x - ox));
+            const f = Math.min(1, b / CUP_R);
+            // it drops if it is over the hole long enough to fall half its radius
+            const chord = 2 * Math.sqrt(Math.max(0, CUP_R * CUP_R - b * b));
+            const vmax = chord / DROP_T + 0.05;
             if (sp < vmax){
               st.p.x = pin.x; st.p.z = pin.z; st.p.y = pin.y - 0.06;
               events.push({ type: 'holed', t, x: pin.x, y: pin.y, z: pin.z });
@@ -216,11 +222,12 @@ export function simulate(hole, st, opts = {}){
             }
             // too firm: it catches the lip and kicks off line
             if (sp < 4.5){
-              const side = ((pin.x - ox) * sz - (pin.z - oz) * sx) > 0 ? 1 : -1;
-              const ang = side * (0.15 + 0.5 * (1 - f)) * Math.min(1, 2.2 / sp);
+              const side = (ux * (pin.z - oz) - uz * (pin.x - ox)) > 0 ? -1 : 1;
+              const ang = side * (0.08 + 0.55 * f) * Math.min(1, 2.2 / sp);
               const c = Math.cos(ang), s = Math.sin(ang);
               const nx = st.v.x * c - st.v.z * s, nz = st.v.x * s + st.v.z * c;
-              st.v.x = nx * 0.72; st.v.z = nz * 0.72;
+              const keep = 0.62 + 0.3 * f;
+              st.v.x = nx * keep; st.v.z = nz * keep;
               events.push({ type: 'lip', t, x: st.p.x, y: st.p.y, z: st.p.z });
             }
             cupCooldown = true;

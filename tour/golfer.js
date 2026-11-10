@@ -57,11 +57,15 @@ export function createGolfer(color, skin){
 
   // legs and hips (body frame)
   const legL = limb(0.075, pants), legR = limb(0.075, pants);
-  const footL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 0.1), shoe);
+  const footGeo = new THREE.CapsuleGeometry(0.048, 0.16, 4, 10);
+  footGeo.rotateZ(Math.PI / 2);
+  footGeo.scale(1, 0.75, 1);
+  const footL = new THREE.Mesh(footGeo, shoe);
   const footR = footL.clone();
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.04, 14), mat('#1b1d22', 0.5));
   const hips = cap(0.15, 0.2, pants);
   hips.rotation.x = Math.PI / 2;
-  body.add(legL, legR, footL, footR, hips);
+  body.add(legL, legR, footL, footR, hips, belt);
 
   // torso pivots at the hips and turns about the spine
   const spine = new THREE.Group();
@@ -138,9 +142,10 @@ export function createGolfer(color, skin){
     const feetX = pelvis.x + 0.08;
     span(legL, new THREE.Vector3(pelvis.x, pelvis.y - 0.05, -0.12), new THREE.Vector3(feetX + 0.06, 0.08, -0.2));
     span(legR, new THREE.Vector3(pelvis.x, pelvis.y - 0.05, 0.12), new THREE.Vector3(feetX + 0.06, 0.08, 0.2));
-    footL.position.set(feetX + 0.1, 0.035, -0.2);
-    footR.position.set(feetX + 0.1, 0.035, 0.2);
+    footL.position.set(feetX + 0.1, 0.04, -0.2);
+    footR.position.set(feetX + 0.1, 0.04, 0.2);
     hips.position.copy(pelvis);
+    belt.position.set(pelvis.x, pelvis.y + 0.1, 0);
     spine.position.copy(pelvis);
     // tilt the spine toward the ball so the shoulders sit at S
     const sv = new THREE.Vector3().subVectors(S, pelvis);
@@ -168,8 +173,9 @@ export function createGolfer(color, skin){
     pose(state.s, state.style);
   }
 
-  // the club group points from hands to head; at address that is ball - hands
+  // the club group points from hands to head; the head soles just behind the ball
   const addressDir = new THREE.Vector3();
+  const SOLE = new THREE.Vector3(-0.02, 0, 0.075);
   function pose(s, style){
     state.s = s; state.style = style;
     const sp = state.spec;
@@ -201,7 +207,7 @@ export function createGolfer(color, skin){
     span(armL, shL, elbowL); span(foreL, elbowL, handsLocal);
     span(armR, shR, elbowR); span(foreR, elbowR, handsLocal);
     // club: from hands toward the ball at address, then hinged in the plane
-    addressDir.copy(new THREE.Vector3(0, 0, 0)).sub(state.hands0).normalize();
+    addressDir.copy(SOLE).sub(state.hands0).normalize();
     clubG.position.copy(handsLocal);
     q.setFromUnitVectors(new THREE.Vector3(0, -1, 0), addressDir);
     const qh = new THREE.Quaternion().setFromAxisAngle(state.axis, hinge * DEG);

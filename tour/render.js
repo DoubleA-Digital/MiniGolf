@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { BALL_R, CUP_R } from './config.js';
 import { paintRegion, detailCanvas } from './paint.js';
+import { prepareHole, surfacePPY } from './prepare.js';
 import { gradAt } from './course.js';
 import { mulberry32 } from './noise.js';
 
@@ -97,10 +98,12 @@ export class World {
       vertexShader: `varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
       fragmentShader: `varying vec3 vD; uniform vec3 top; uniform vec3 bottom; uniform vec3 sunDir; uniform vec3 sunCol;
         void main(){ float h = clamp(vD.y, -0.2, 1.0);
-          vec3 c = mix(bottom, top, pow(max(h, 0.0), 0.55));
+          vec3 c = mix(bottom, top, pow(smoothstep(-0.03, 0.5, h), 0.75));
           float s = max(dot(normalize(vD), normalize(sunDir)), 0.0);
           c += sunCol * (pow(s, 900.0) * 1.6 + pow(s, 12.0) * 0.12);
-          gl_FragColor = vec4(c, 1.0); }`
+          gl_FragColor = vec4(c, 1.0);
+          #include <colorspace_fragment>
+        }`
     }));
     sky.renderOrder = -10;
     this.sky = sky;
@@ -125,6 +128,12 @@ export class World {
     this.scene.add(this.dots.obj, this.flow.obj, this.parts.obj);
     this.particles = [];
     this.buildTarget();
+    this.buildClouds();
+    const peg = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.003, 0.05, 8),
+      new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5 }));
+    peg.visible = false;
+    this.peg = peg;
+    this.scene.add(peg);
     this.others = [];
     this.golfers = [];
     this.resize();
@@ -161,6 +170,33 @@ export class World {
     this.scene.fog.color.set(T.fog);
   }
 
+  buildClouds(){
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
+    const c = cv.getContext('2d');
+    const rnd = mulberry32(17);
+    for (let i = 0; i < 26; i++){
+      const x = 40 + rnd() * 176, y = 50 + rnd() * 40 - Math.abs(x - 128) * 0.12, r = 18 + rnd() * 30;
+      const g = c.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.85)'); g.addColorStop(0.6, 'rgba(255,255,255,0.35)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.clouds = new THREE.Group();
+    for (let i = 0; i < 16; i++){
+      const m = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false,
+                                           toneMapped: false, opacity: 0.55 + rnd() * 0.3 });
+      const sp = new THREE.Sprite(m);
+      const a = rnd() * Math.PI * 2, d = 2600 + rnd() * 2600;
+      sp.position.set(Math.cos(a) * d, 900 + rnd() * 1300, Math.sin(a) * d);
+      const sc = 700 + rnd() * 900;
+      sp.scale.set(sc, sc * 0.45, 1);
+      sp.renderOrder = -9;
+      this.clouds.add(sp);
+    }
+    this.scene.add(this.clouds);
+  }
+
   /* ================= hole ================= */
   disposeHole(){
     const kill = g => {
@@ -178,16 +214,16 @@ export class World {
     this.flag = null;
   }
 
-  buildHole(h){
+  buildHole(h, prep){
     this.disposeHole();
     this.h = h;
     const T = h.T;
     this.setTheme(T);
     const b = h.bounds;
+    if (!prep || prep.quality !== this.quality) prep = prepareHole(h, this.quality);
 
     /* ---- surface texture ---- */
-    const ppy = this.quality === 'high' ? 2.6 : 1.8;
-    const painted = paintRegion(h, b, ppy);
+    const painted = paintRegion(h, b, surfacePPY(this.quality), {}, prep.main);
     this.surfaceCanvas = painted.canvas;
     const tex = new THREE.CanvasTexture(painted.canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -196,9 +232,7 @@ export class World {
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
 
     /* ---- terrain mesh with a far skirt ---- */
-    const step = this.quality === 'high' ? 1.5 : 2.2;
-    const nx = Math.ceil((b.maxX - b.minX) / step) + 1;
-    const nz = Math.ceil((b.maxZ - b.minZ) / step) + 1;
+    const { nx, nz, step, heights } = prep.terr;
     const cols = nx + 2, rows = nz + 2;
     const pos = new Float32Array(cols * rows * 3);
     const uv = new Float32Array(cols * rows * 2);
@@ -207,12 +241,13 @@ export class World {
     let k = 0, u = 0;
     for (let r = 0; r < rows; r++){
       const zi = r === 0 ? b.minZ - SK : r === rows - 1 ? b.maxZ + SK : Math.min(b.maxZ, b.minZ + (r - 1) * step);
+      const ri = Math.max(0, Math.min(nz - 1, r - 1));
       for (let c = 0; c < cols; c++){
         const xi = c === 0 ? b.minX - SK : c === cols - 1 ? b.maxX + SK : Math.min(b.maxX, b.minX + (c - 1) * step);
         const skirt = r === 0 || c === 0 || r === rows - 1 || c === cols - 1;
+        const ci = Math.max(0, Math.min(nx - 1, c - 1));
         pos[k++] = xi;
-        pos[k++] = skirt ? h.heightAt(Math.max(b.minX, Math.min(b.maxX, xi)), Math.max(b.minZ, Math.min(b.maxZ, zi))) - 6
-                         : h.heightAt(xi, zi);
+        pos[k++] = heights[ri * nx + ci] - (skirt ? 6 : 0);
         pos[k++] = zi;
         uv[u++] = Math.max(0, Math.min(1, (xi - b.minX) / W));
         uv[u++] = Math.max(0, Math.min(1, (zi - b.minZ) / D));
@@ -236,20 +271,18 @@ export class World {
     this.holeGroup.add(this.terrain);
 
     /* ---- high-res green patch ---- */
-    const gr = h.greenRmax + 9;
-    const gReg = { minX: h.greenC.x - gr, maxX: h.greenC.x + gr, minZ: h.greenC.z - gr, maxZ: h.greenC.z + gr };
-    const gp = paintRegion(h, gReg, 14, { edgeFade: 3, salt: 3 });
+    const gReg = prep.gReg, gr = gReg.r;
+    const gp = paintRegion(h, gReg, 14, { edgeFade: 3, salt: 3 }, prep.green);
     const gtex = new THREE.CanvasTexture(gp.canvas);
     gtex.colorSpace = THREE.SRGBColorSpace; gtex.flipY = false; gtex.anisotropy = 8;
-    const gs = 0.33;
-    const gn = Math.ceil(gr * 2 / gs) + 1;
+    const { gn, gs } = prep.gpatch, gH = prep.gpatch.heights;
     const gpos = new Float32Array(gn * gn * 3), guv = new Float32Array(gn * gn * 2);
     k = 0; u = 0;
     for (let r = 0; r < gn; r++){
       const z = gReg.minZ + Math.min(gr * 2, r * gs);
       for (let c = 0; c < gn; c++){
         const x = gReg.minX + Math.min(gr * 2, c * gs);
-        gpos[k++] = x; gpos[k++] = h.heightAt(x, z) + 0.008; gpos[k++] = z;
+        gpos[k++] = x; gpos[k++] = gH[r * gn + c] + 0.008; gpos[k++] = z;
         guv[u++] = (x - gReg.minX) / (gr * 2); guv[u++] = (z - gReg.minZ) / (gr * 2);
       }
     }
@@ -271,6 +304,7 @@ export class World {
     greenMesh.renderOrder = 1;
     this.holeGroup.add(greenMesh);
     this.gReg = gReg;
+    this.gridPts = prep.grid;
 
     /* ---- water ---- */
     this.water = [];
@@ -300,6 +334,8 @@ export class World {
     /* ---- flag, cup, tee markers, stakes ---- */
     this.buildFlag(h);
     this.buildMarkers(h);
+    this.clouds.position.set((b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2);
+    this.clouds.children.forEach(c => c.material.color.set(h.theme === 'mesa' ? '#fff3e6' : '#ffffff'));
 
     /* ---- trees ---- */
     this.buildTrees(h.trees, this.holeGroup, T, 1);
@@ -371,14 +407,14 @@ export class World {
   buildMarkers(h){
     const col = h.theme === 'links' ? '#2c5fd6' : h.theme === 'mesa' ? '#d84a2a' : '#1d5c2c';
     const mm = new THREE.MeshStandardMaterial({ color: col, roughness: 0.5 });
-    const geo = new THREE.SphereGeometry(0.16, 14, 10);
+    const geo = new THREE.SphereGeometry(0.09, 14, 10);
     const tb = h.teeBox;
     for (const side of [-1, 1]){
       const m = new THREE.Mesh(geo, mm);
-      const lx = side * 3.2, lz = -tb.hl * 0.3;
+      const lx = side * 3.6, lz = -tb.hl * 0.6;
       const c = Math.cos(-tb.rot), s = Math.sin(-tb.rot);
       const x = tb.x + lx * c - lz * s, z = tb.z + lx * s + lz * c;
-      m.position.set(x, h.heightAt(x, z) + 0.12, z);
+      m.position.set(x, h.heightAt(x, z) + 0.07, z);
       this.holeGroup.add(m);
     }
     // white out-of-bounds stakes
@@ -555,23 +591,8 @@ export class World {
 
   /* ---- green grid & slope flow ---- */
   buildGreenGrid(h){
-    const r = this.gReg, step = 1, sub = 0.25;
-    const pts = [];
-    const on = (x, z) => { const s = h.surfaceAt(x, z); return s === 'green' || s === 'fringe'; };
-    for (let gx = Math.ceil(r.minX); gx <= r.maxX; gx += step){
-      for (let z = r.minZ; z < r.maxZ - sub; z += sub){
-        if (on(gx, z) && on(gx, z + sub))
-          pts.push(gx, h.heightAt(gx, z) + 0.02, z, gx, h.heightAt(gx, z + sub) + 0.02, z + sub);
-      }
-    }
-    for (let gz = Math.ceil(r.minZ); gz <= r.maxZ; gz += step){
-      for (let x = r.minX; x < r.maxX - sub; x += sub){
-        if (on(x, gz) && on(x + sub, gz))
-          pts.push(x, h.heightAt(x, gz) + 0.02, gz, x + sub, h.heightAt(x + sub, gz) + 0.02, gz);
-      }
-    }
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    g.setAttribute('position', new THREE.BufferAttribute(this.gridPts, 3));
     const m = new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.0, depthWrite: false });
     this.grid = new THREE.LineSegments(g, m);
     this.grid.renderOrder = 4;
@@ -697,12 +718,13 @@ export class World {
       let ox = ty * vz - tz * vy, oy = tz * vx - tx * vz, oz = tx * vy - ty * vx;
       const oL = Math.hypot(ox, oy, oz) || 1;
       const dist = Math.hypot(vx, vy, vz);
-      const w = Math.max(0.015, Math.min(1.6, dist * 0.0032));
+      const w = Math.max(0.012, Math.min(1.3, dist * 0.0026));
       ox = ox / oL * w; oy = oy / oL * w; oz = oz / oL * w;
       this.trPos[pi++] = x + ox; this.trPos[pi++] = y + oy; this.trPos[pi++] = z + oz;
       this.trPos[pi++] = x - ox; this.trPos[pi++] = y - oy; this.trPos[pi++] = z - oz;
       const age = (n - 1 - i);
-      const a = (0.25 + 0.75 * Math.min(1, i / 6)) * (age < 3 ? 1 : Math.max(0.35, 1 - age / 900)) * fade;
+      const near = Math.min(1, Math.max(0, (dist - 2) / 10));
+      const a = (0.25 + 0.75 * Math.min(1, i / 6)) * (age < 3 ? 1 : Math.max(0.35, 1 - age / 900)) * fade * near;
       this.trA[ai++] = a; this.trA[ai++] = a;
     }
     g.setDrawRange(0, Math.max(0, (n - 1) * 6));
@@ -822,6 +844,7 @@ export class World {
       const nm = w.material.normalMap;
       if (nm){ nm.offset.x = this.t * 0.012; nm.offset.y = this.t * 0.008; }
     }
+    if (this.clouds) this.clouds.rotation.y += dt * 0.0016;
     this.stepParticles(dt);
     this.stepFlow(dt);
   }
