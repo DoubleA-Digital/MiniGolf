@@ -164,7 +164,8 @@ export const net = {
           }
           this.emit(m);
         });
-        conn.on('close', () => { if (!settled) fail({ type: 'peer-unavailable' }); else this.lost(); });
+        // only the live session may end things: a stale conn closing after reset() must not kill a newer room
+        conn.on('close', () => { if (!settled) fail({ type: 'peer-unavailable' }); else if (this.host === conn) this.lost(); });
         conn.on('error', err => { if (!settled) fail(err); });
       });
     });
@@ -178,9 +179,16 @@ export const net = {
 
   /* ---- both ---- */
   beat(){
-    clearInterval(this.beatTimer);
-    this.beatTimer = setInterval(() => {
+    this.stopBeat();
+    let last = Date.now();
+    const tick = () => {
       const now = Date.now();
+      // our own clock stalled (throttled tab, long frame): nobody else was silent, we were asleep
+      if (now - last > BEAT_MS * 3){
+        for (const c of this.conns) c.seen = now;
+        this.hostSeen = now;
+      }
+      last = now;
       if (this.isHost){
         for (const c of this.conns.slice()){
           if (now - c.seen > SILENT_MS){ this.guestLeft(c); try{ c.close(); }catch(e){} }
@@ -190,7 +198,21 @@ export const net = {
         if (now - this.hostSeen > SILENT_MS){ this.lost(); return; }
         try{ this.host.send({ t: 'hb' }); }catch(e){}
       }
-    }, BEAT_MS);
+    };
+    // background tabs throttle main-thread timers to ~1/min, which starves the heartbeat;
+    // a worker's timer keeps running, so drive the beat from one when we can
+    try{
+      const src = `setInterval(() => postMessage(0), ${BEAT_MS});`;
+      this.beatWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      this.beatWorker.onmessage = tick;
+    }catch(e){
+      this.beatWorker = null;
+      this.beatTimer = setInterval(tick, BEAT_MS);
+    }
+  },
+  stopBeat(){
+    clearInterval(this.beatTimer);
+    if (this.beatWorker){ try{ this.beatWorker.terminate(); }catch(e){} this.beatWorker = null; }
   },
   // host fans out; a guest sends up to the host, which relays
   broadcast(m){
@@ -200,7 +222,7 @@ export const net = {
   send(m){ m.pid = m.pid || this.myPid; this.broadcast(m); },
 
   reset(){
-    clearInterval(this.beatTimer);
+    this.stopBeat();
     try{ this.peer && this.peer.destroy(); }catch(e){}
     this.peer = null; this.conns = []; this.host = null;
     this.online = false; this.isHost = false; this.code = null; this.started = false; this.roster = [];
