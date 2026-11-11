@@ -188,7 +188,7 @@ export function createGolfer(color, skin){
   root.add(shadow);
   const shBase = Float32Array.from(shGeo.attributes.position.array);
 
-  root.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
+  root.traverse(o => { if (o.isMesh){ o.frustumCulled = false; if (o !== shadow) o.castShadow = true; } });
 
   const state = { spec: CLUB_SPECS.iron, kind: 'iron', S: new THREE.Vector3(), hands0: new THREE.Vector3(),
                   axis: new THREE.Vector3(), pelvis0: new THREE.Vector3(), ankleX: 0,

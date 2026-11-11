@@ -121,7 +121,7 @@ export function paintRegion(h, region, ppy, opts = {}, pre){
       const rad = (t.kind === 'cactus' ? 0.8 : t.r * 1.05) * ppy;
       if (cx < -rad * 3 || cz < -rad * 3 || cx > W + rad * 3 || cz > D + rad * 3) continue;
       const grd = ctx.createRadialGradient(cx, cz, rad * 0.15, cx, cz, rad * 1.35);
-      grd.addColorStop(0, 'rgba(40,60,40,0.55)');
+      grd.addColorStop(0, 'rgba(40,60,40,0.42)');
       grd.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = grd;
       ctx.beginPath();
@@ -137,6 +137,33 @@ function hash(x, y){
   let h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/* Soft, direction-free tileable noise for broad ground variation far away:
+   waves with whole-number frequencies in many directions, so it wraps seamlessly. */
+export function macroCanvas(size = 128){
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  let seed = 9;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const waves = [];
+  for (let i = 0; i < 28; i++){
+    const f = 1 + Math.floor(rnd() * (i < 10 ? 3 : 7)), a = rnd() * Math.PI * 2;
+    waves.push({ kx: Math.round(Math.cos(a) * f), ky: Math.round(Math.sin(a) * f), p: rnd() * 6.283, w: 1 / (1 + f * 0.6) });
+  }
+  const tw = waves.reduce((s, w) => s + w.w, 0);
+  for (let j = 0; j < size; j++) for (let i = 0; i < size; i++){
+    let n = 0;
+    for (const w of waves) n += Math.sin((w.kx * i + w.ky * j) / size * Math.PI * 2 + w.p) * w.w;
+    const v = 128 + n / tw * 260;
+    const o = (j * size + i) * 4;
+    img.data[o] = img.data[o + 1] = img.data[o + 2] = clamp(v, 0, 255);
+    img.data[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
 }
 
 /* A small tileable grass-grain texture used as a detail layer up close. */

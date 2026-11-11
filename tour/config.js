@@ -108,7 +108,7 @@ export const THEMES = {
     sky:['#7d9fbb', '#dfe7ea'], fog:'#d6dee2', sun:[-0.45, 0.6, 0.4], sunColor:'#fffaf0', sunI:1.9,
     hemi:['#dde8f0', '#6d6b3e', 1.15],
     fairway:'#7fae4f', fairway2:'#89b858', green:'#79bf55', green2:'#84c95f', fringe:'#72b04d',
-    rough:'#7a9a45', deep:'#b9a865', outer:'#a99a5c', sand:'#e3d2a0', water:'#3d6470', waterTop:'#55828f',
+    rough:'#6f9a42', deep:'#a3a45a', outer:'#7f9a4e', sand:'#e3d2a0', water:'#3d6470', waterTop:'#55828f',
     tee:'#80b051', waste:null,
     fairW:[21, 28], rough1:[10, 15], deepW:[30, 42], amp:2.4, bump:0.9, elev:[-4, 4],
     trees:0.18, treeKinds:['gorse', 'gorse', 'gorse'], waterChance:0.12, bunkerMul:1.6,

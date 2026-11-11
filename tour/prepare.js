@@ -4,6 +4,34 @@
    main thread almost nothing, with a synchronous fallback.
    ============================================================ */
 import { paintPixels } from './paint.js';
+import { mulberry32 } from './noise.js';
+
+/* grass per course: which surfaces get tufts, how dense (p), how tall (yards) and what colour */
+export const THEME_GRASS = {
+  pines: { rough: { p: 0.8, h: 0.24, col: 'rough', k: 1.6 }, deep: { p: 1, h: 0.36, col: 'deep', k: 1.75 } },
+  links: { rough: { p: 0.75, h: 0.26, col: 'rough', k: 1.45 }, deep: { p: 1, h: 0.5, col: '#c9b86a', k: 1.15 } },
+  mesa:  { rough: { p: 0.7, h: 0.22, col: 'rough', k: 1.45 }, deep: { p: 0.5, h: 0.32, col: '#b9a060', k: 1.15 },
+           waste: { p: 0.05, h: 0.3, col: '#a99055', k: 1.1 } }
+};
+
+// where grass tufts grow: [x, z, height, spec index, tint] per tuft
+function grassPoints(h, quality){
+  if (quality !== 'high') return new Float32Array(0);
+  const specs = Object.entries(THEME_GRASS[h.theme] || THEME_GRASS.pines);
+  const rnd = mulberry32(h.seed + 777), b = h.bounds;
+  const area = (b.maxX - b.minX) * (b.maxZ - b.minZ);
+  const tries = Math.min(48000, area * 0.6);
+  const out = [];
+  for (let i = 0; i < tries && out.length < 20000 * 5; i++){
+    const x = b.minX + rnd() * (b.maxX - b.minX), z = b.minZ + rnd() * (b.maxZ - b.minZ);
+    const surf = h.surfaceAt(x, z);
+    const si = specs.findIndex(([k]) => k === surf);
+    if (si < 0 || rnd() > specs[si][1].p) continue;
+    out.push(x, z, specs[si][1].h * (0.65 + rnd() * 0.7), si, 0.85 + rnd() * 0.3);
+  }
+  return new Float32Array(out);
+}
+
 
 export function terrainStep(quality){ return quality === 'high' ? 1.5 : 2.2; }
 export function surfacePPY(quality){ return quality === 'high' ? 2.6 : 1.8; }
@@ -52,9 +80,9 @@ export function prepareHole(h, quality){
   }
 
   return { quality, main, terr: { nx, nz, step, heights }, gReg, green, gpatch: { gn, gs, heights: gHeights },
-           grid: new Float32Array(pts) };
+           grid: new Float32Array(pts), grass: grassPoints(h, quality) };
 }
 
 export function transferables(p){
-  return [p.main.data.buffer, p.terr.heights.buffer, p.green.data.buffer, p.gpatch.heights.buffer, p.grid.buffer];
+  return [p.main.data.buffer, p.terr.heights.buffer, p.green.data.buffer, p.gpatch.heights.buffer, p.grid.buffer, p.grass.buffer];
 }

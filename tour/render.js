@@ -4,28 +4,42 @@
    ============================================================ */
 import * as THREE from 'three';
 import { BALL_R, CUP_R } from './config.js';
-import { paintRegion, detailCanvas } from './paint.js';
-import { prepareHole, surfacePPY } from './prepare.js';
+import { paintRegion, detailCanvas, macroCanvas } from './paint.js';
+import { prepareHole, surfacePPY, THEME_GRASS } from './prepare.js';
 import { gradAt } from './course.js';
 import { mulberry32 } from './noise.js';
 
 /* ---------- shared shader bits ---------- */
-function addDetail(mat, detailTex, strength = 0.5){
-  mat.customProgramCacheKey = () => 'detail' + strength;
+function addDetail(mat, detailTex, strength = 0.5, edge = null){
+  mat.customProgramCacheKey = () => 'detail' + strength + (edge ? 'e' : '');
   mat.onBeforeCompile = sh => {
     sh.uniforms.detailMap = { value: detailTex };
+    if (edge){
+      sh.uniforms.uMin = { value: new THREE.Vector2(edge.minX, edge.minZ) };
+      sh.uniforms.uMax = { value: new THREE.Vector2(edge.maxX, edge.maxZ) };
+      sh.uniforms.uOuter = { value: new THREE.Color(edge.color) };
+      sh.uniforms.macroMap = { value: edge.macro };
+    }
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nuniform sampler2D detailMap;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nuniform sampler2D detailMap;' +
+               (edge ? '\nuniform vec2 uMin; uniform vec2 uMax; uniform vec3 uOuter; uniform sampler2D macroMap;' : ''))
       .replace('#include <map_fragment>', `#include <map_fragment>
         float dd = length(vWPos - cameraPosition);
         float near = 1.0 - smoothstep(6.0, 70.0, dd);
         float d1 = texture2D(detailMap, vWPos.xz * 1.7).r;
         float d2 = texture2D(detailMap, vWPos.xz * 0.21).r;
         float dv = mix(d2, d1, near);
-        diffuseColor.rgb *= mix(1.0, dv * 2.0, ${strength.toFixed(2)} * (0.35 + 0.65 * near));`);
+        diffuseColor.rgb *= mix(1.0, dv * 2.0, ${strength.toFixed(2)} * (0.35 + 0.65 * near));
+        ${edge ? `
+        // past the painted course the texture is only stretched edge pixels: use mottled ground instead
+        float ex = max(max(uMin.x - vWPos.x, vWPos.x - uMax.x), max(uMin.y - vWPos.z, vWPos.z - uMax.y));
+        float ew = smoothstep(-14.0, 1.0, ex);
+        float m1 = texture2D(macroMap, vWPos.xz * 0.0061).r, m2 = texture2D(macroMap, vWPos.xz * 0.0013 + 0.37).r;
+        vec3 oc = uOuter * (0.72 + 0.56 * (m1 * 0.5 + m2 * 0.5)) * mix(1.0, dv * 2.0, 0.22);
+        diffuseColor.rgb = mix(diffuseColor.rgb, oc, ew);` : ''}`);
   };
 }
 
@@ -86,6 +100,147 @@ function gridHeight(g, x, z){
   return fx + fz <= 1 ? a + (b - a) * fx + (cc - a) * fz : d + (cc - d) * (1 - fx) + (b - d) * (1 - fz);
 }
 
+const SHADOW_R = 70;          // yards either side of the focus
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
+
+/* horizon ridgelines per course: [radius, height, roughness, colours] */
+const THEME_RIDGES = {
+  pines: { layers: [
+    { salt: 1, r: 5600, h: 760, base: 120, rough: 1, col: '#5f7f96', top: '#7f9bb0', snow: 0.8, haze: 0.4 },
+    { salt: 2, r: 4300, h: 360, base: 40, rough: 0.8, col: '#2f5a45', top: '#4b7a5a', snow: 2, haze: 0.2 } ] },
+  links: { layers: [
+    { salt: 3, r: 5600, h: 300, base: 30, rough: 0.6, col: '#6f8288', top: '#8d9da2', snow: 2, haze: 0.42 },
+    { salt: 4, r: 4300, h: 150, base: 15, rough: 0.45, col: '#55683f', top: '#768451', snow: 2, haze: 0.22 } ] },
+  mesa: { layers: [
+    { salt: 5, r: 5600, h: 560, base: 100, rough: 0.9, col: '#a9705a', top: '#c99a80', snow: 2, haze: 0.38, flat: 0.62 },
+    { salt: 6, r: 4300, h: 320, base: 30, rough: 0.7, col: '#94492b', top: '#b8683f', snow: 2, haze: 0.16, flat: 0.55 } ] }
+};
+
+// a closed band of mountains around the course: vertex-coloured, hazier at the foot
+function ridge(seed, cx, cz, L, fogHex, sea){
+  const rnd = mulberry32(seed);
+  const waves = Array.from({ length: 7 }, (_, i) => ({ f: [2, 3, 5, 7, 11, 17, 29][i], p: rnd() * 6.28, a: [1, 0.7, 0.45, 0.3, 0.2, 0.12, 0.07][i] }));
+  const N = 360, fog = new THREE.Color(fogHex), col = new THREE.Color(L.col), top = new THREE.Color(L.top), snow = new THREE.Color('#f4f7fa');
+  const pos = [], cols = [], idx = [];
+  for (let i = 0; i <= N; i++){
+    const a = i / N * Math.PI * 2;
+    let n = 0;
+    for (const w of waves) n += Math.sin(a * w.f + w.p) * w.a * (w.f > 5 ? L.rough : 1);
+    let k = Math.max(0, 0.5 + n * 0.32);
+    if (L.flat) k = Math.min(k, L.flat) + Math.max(0, k - L.flat) * 0.08;       // mesas: flat tops
+    // no mountains over the sea
+    if (sea){ const fac = Math.cos(a) * sea.x + Math.sin(a) * sea.z; k *= 1 - Math.max(0, Math.min(1, (fac - 0.1) * 2.2)); }
+    const y = L.base + k * L.h;
+    const x = cx + Math.cos(a) * L.r, z = cz + Math.sin(a) * L.r;
+    const snowy = k > L.snow;
+    pos.push(x, -120, z, x, y * 0.45, z, x, snowy ? L.base + L.snow * L.h * 0.97 : y * 0.85, z, x, y, z);
+    const bot = fog.clone();
+    const mid = col.clone().lerp(fog, L.haze * 0.75);
+    const sh = (snowy ? top : col.clone().lerp(top, 0.6)).clone().lerp(fog, L.haze * 0.5);
+    const tp = (snowy ? snow : top).clone().lerp(fog, L.haze * 0.4);
+    cols.push(bot.r, bot.g, bot.b, mid.r, mid.g, mid.b, sh.r, sh.g, sh.b, tp.r, tp.g, tp.b);
+    if (i < N){
+      const o = i * 4;
+      for (let r = 0; r < 3; r++) idx.push(o + r, o + 4 + r, o + r + 1, o + r + 1, o + 4 + r, o + 5 + r);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  g.setIndex(idx);
+  const m = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.renderOrder = -8;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+// a mesa: rough-sided, slightly tapered, with banded strata and a pale cap
+function mesaGeometry(){
+  const g = new THREE.CylinderGeometry(1, 1.18, 1, 14, 7).translate(0, 0.5, 0);
+  const p = g.attributes.position, rnd = mulberry32(31);
+  const jit = Array.from({ length: 15 }, () => 0.86 + rnd() * 0.26);
+  const col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++){
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const r = Math.hypot(x, z);
+    if (r > 1e-4){
+      const a = Math.atan2(z, x), seg = Math.round((a + Math.PI) / (Math.PI * 2) * 14) % 14;
+      const k = jit[seg] * (1 + (y < 0.95 ? Math.sin(y * 23 + seg) * 0.03 : 0));
+      p.setX(i, x * k); p.setZ(i, z * k);
+    }
+    const band = 0.84 + 0.16 * Math.sin(y * 31) + 0.08 * Math.sin(y * 11 + 1);
+    const cap = y > 0.995 && r < 1.25 ? 1.22 : 1;
+    const red = y < 0.35 ? 1.06 : 1;
+    col[i * 3] = band * cap * red; col[i * 3 + 1] = band * cap; col[i * 3 + 2] = band * cap * (y > 0.6 ? 1.02 : 0.96);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+let _grassGeo = null, _grassTex = null;
+function grassGeometry(){
+  if (_grassGeo) return _grassGeo;
+  // three crossed quads, base at y=0, unit height
+  const pos = [], uv = [], idx = [];
+  for (let q = 0; q < 3; q++){
+    const a = q / 3 * Math.PI, cx = Math.cos(a) * 0.5, cz = Math.sin(a) * 0.5, o = q * 4;
+    pos.push(-cx, 0, -cz, cx, 0, cz, cx, 1, cz, -cx, 1, -cz);
+    uv.push(0, 0, 1, 0, 1, 1, 0, 1);
+    idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
+  }
+  _grassGeo = new THREE.BufferGeometry();
+  _grassGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  _grassGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  _grassGeo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length).fill(0).map((_, i) => i % 3 === 1 ? 1 : 0), 3));
+  _grassGeo.setIndex(idx);
+  _grassGeo.userData.shared = true;
+  return _grassGeo;
+}
+function grassTexture(){
+  if (_grassTex) return _grassTex;
+  const S = 128, cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const c = cv.getContext('2d'), rnd = mulberry32(5);
+  for (let i = 0; i < 26; i++){
+    const x = 8 + rnd() * (S - 16), h = S * (0.45 + rnd() * 0.55), lean = (rnd() - 0.5) * 30, w = 2.2 + rnd() * 2.5;
+    const g = c.createLinearGradient(0, S, 0, S - h);
+    const v = 205 + rnd() * 50, lo = Math.round(v * 0.72);
+    g.addColorStop(0, `rgb(${lo},${lo},${lo})`); g.addColorStop(1, `rgb(${Math.round(v)},${Math.round(v)},${Math.round(v)})`);
+    c.fillStyle = g;
+    c.beginPath(); c.moveTo(x - w, S); c.quadraticCurveTo(x + lean * 0.3, S - h * 0.6, x + lean, S - h); c.lineTo(x + w, S); c.fill();
+  }
+  _grassTex = new THREE.CanvasTexture(cv);
+  _grassTex.colorSpace = THREE.SRGBColorSpace;
+  _grassTex.userData.shared = true;
+  return _grassTex;
+}
+function grassMaterial(world){
+  const m = new THREE.MeshLambertMaterial({ map: grassTexture(), alphaTest: 0.45, side: THREE.DoubleSide });
+  const u = { uTime: { value: 0 }, uWind: { value: 0.5 }, uBall: { value: new THREE.Vector3(1e6, 0, 1e6) }, uFar: { value: 70 } };
+  m.userData.u = u;
+  m.userData.shared = true;
+  m.customProgramCacheKey = () => 'grass';
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uWind; uniform vec3 uBall; uniform float uFar;')
+      .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3(1.0, 0.0, 0.0);\n#endif')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec3 ip = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+        float dc = distance(ip, cameraPosition);
+        float sc = (1.0 - smoothstep(uFar * 0.65, uFar, dc)) * smoothstep(0.7, 1.6, distance(ip.xz, uBall.xz));
+        transformed *= sc;
+        float sway = sin(uTime * 1.9 + ip.x * 0.35 + ip.z * 0.27) + 0.5 * sin(uTime * 3.7 + ip.z * 0.9);
+        transformed.x += sway * 0.09 * uWind * position.y;
+        transformed.z += sway * 0.05 * uWind * position.y;`);
+    // light every blade like the turf it grows from, whichever side faces the camera
+    sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>',
+      'float faceDirection = 1.0;\nvec3 normal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);\nvec3 nonPerturbedNormal = normal;');
+  };
+  return m;
+}
+
 /* ---------- the world ---------- */
 export class World {
   constructor(canvas){
@@ -103,6 +258,15 @@ export class World {
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x446633, 1);
     this.sun = new THREE.DirectionalLight(0xffffff, 2);
     this.scene.add(this.hemi, this.sun, this.sun.target);
+    // real shadows near the action; a wide soft map that follows the camera
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const sc = this.sun.shadow;
+    sc.mapSize.set(2048, 2048);
+    sc.camera.left = sc.camera.bottom = -SHADOW_R; sc.camera.right = sc.camera.top = SHADOW_R;
+    sc.camera.near = 1; sc.camera.far = 900;
+    sc.bias = -0.0004; sc.normalBias = 0.04;
+    this.shadowFocus = new THREE.Vector3();
 
     // sky dome
     this.skyU = { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() },
@@ -128,6 +292,9 @@ export class World {
     this.detailTex.wrapS = this.detailTex.wrapT = THREE.RepeatWrapping;
     this.detailTex.colorSpace = THREE.NoColorSpace;
     this.detailTex.anisotropy = 4;
+    this.macroTex = new THREE.CanvasTexture(macroCanvas(128));
+    this.macroTex.wrapS = this.macroTex.wrapT = THREE.RepeatWrapping;
+    this.macroTex.colorSpace = THREE.NoColorSpace;
 
     this.holeGroup = new THREE.Group();
     this.scene.add(this.holeGroup);
@@ -155,6 +322,7 @@ export class World {
 
   setQuality(q){
     this.quality = q;
+    this.sun.castShadow = q === 'high';
     this.resize();
   }
   resize(){
@@ -176,6 +344,7 @@ export class World {
     const sd = new THREE.Vector3(...T.sun).normalize();
     this.skyU.sunDir.value.copy(sd);
     this.sunDir = sd;
+    this.sun.position.copy(sd).multiplyScalar(400);      // light from the theme's sun, not straight down
     this.sun.color.set(T.sunColor);
     this.sun.intensity = T.sunI;
     this.hemi.color.set(T.hemi[0]);
@@ -231,6 +400,14 @@ export class World {
   buildHole(h, prep){
     this.disposeHole();
     this.h = h;
+    this.seaMesh = null;
+    // links holes run beside the sea, off one side and square to the line of the hole
+    this.seaDir = null;
+    if (h.theme === 'links'){
+      const dx = h.greenC.x - h.tee.x, dz = h.greenC.z - h.tee.z, L = Math.hypot(dx, dz) || 1;
+      const side = mulberry32(h.seed + 4243)() < 0.5 ? -1 : 1;
+      this.seaDir = { x: -dz / L * side, z: dx / L * side };
+    }
     const T = h.T;
     this.setTheme(T);
     const b = h.bounds;
@@ -262,7 +439,9 @@ export class World {
         const skirt = r === 0 || c === 0 || r === rows - 1 || c === cols - 1;
         const ci = Math.max(0, Math.min(nx - 1, c - 1));
         pos[k++] = xi;
-        pos[k++] = heights[ri * nx + ci] - (skirt ? 6 : 0);
+        // on the sea side the land falls away to a shoreline instead of running to the horizon
+        const toSea = skirt && this.seaDir && ((xi - (b.minX + b.maxX) / 2) * this.seaDir.x + (zi - (b.minZ + b.maxZ) / 2) * this.seaDir.z) > 0;
+        pos[k++] = heights[ri * nx + ci] - (skirt ? (toSea ? 60 : 6) : 0);
         pos[k++] = zi;
         uv[u++] = Math.max(0, Math.min(1, (xi - b.minX) / W));
         uv[u++] = Math.max(0, Math.min(1, (zi - b.minZ) / D));
@@ -281,8 +460,9 @@ export class World {
     tg.setIndex(new THREE.BufferAttribute(idx, 1));
     tg.computeVertexNormals();
     const tm = new THREE.MeshLambertMaterial({ map: tex });
-    addDetail(tm, this.detailTex, 0.42);
+    addDetail(tm, this.detailTex, 0.42, { minX: b.minX, minZ: b.minZ, maxX: b.maxX, maxZ: b.maxZ, color: T.outer, macro: this.macroTex });
     this.terrain = new THREE.Mesh(tg, tm);
+    this.terrain.receiveShadow = true;
     this.holeGroup.add(this.terrain);
 
     /* ---- high-res green patch ---- */
@@ -318,6 +498,7 @@ export class World {
                                                polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     addDetail(gm, this.detailTex, 0.3);
     const greenMesh = new THREE.Mesh(gg, gm);
+    greenMesh.receiveShadow = true;
     greenMesh.renderOrder = 1;
     this.holeGroup.add(greenMesh);
     this.gReg = gReg;
@@ -355,7 +536,8 @@ export class World {
     this.clouds.children.forEach(c => c.material.color.set(h.theme === 'mesa' ? '#fff3e6' : '#ffffff'));
 
     /* ---- trees ---- */
-    this.buildTrees(h.trees, this.holeGroup, T, 1);
+    this.buildTrees(h.trees, this.holeGroup, T, 1, true);
+    this.buildGrass(h, prep.grass);
     this.buildScenery(h);
 
     /* ---- green grid for reading putts ---- */
@@ -376,7 +558,10 @@ export class World {
 
   // upload textures and compile shaders now, while the screen is faded out
   warm(){
-    try{ this.renderer.compile(this.scene, this.camera); }catch(e){}
+    const hidden = [];
+    this.scene.traverse(o => { if (!o.visible && o !== this.scene){ hidden.push(o); o.visible = true; } });
+    try{ this.renderer.compile(this.scene, this.camera); this.render(); }catch(e){}
+    for (const o of hidden) o.visible = false;
     this.scene.traverse(o => {
       const m = o.material;
       if (m && m.map && m.map.isTexture && this.renderer.initTexture) this.renderer.initTexture(m.map);
@@ -417,6 +602,7 @@ export class World {
     const swing = new THREE.Group();
     swing.add(flag);
     g.add(pole, swing);
+    pole.castShadow = flag.castShadow = true;
     g.position.set(h.pin.x, h.pin.y, h.pin.z);
     swing.rotation.y = Math.PI / 2 - h.wind.dir;
     this.flagBase = Float32Array.from(fg.attributes.position.array);
@@ -466,20 +652,32 @@ export class World {
   treeGeos(){
     if (this._tg) return this._tg;
     const mk = g => { g.userData.shared = true; return g; };
+    // canopies darken toward the underside, like light filtering through leaves
+    const shade = (g, lo, hi) => {
+      g.computeBoundingBox();
+      const p = g.attributes.position, y0 = g.boundingBox.min.y, y1 = g.boundingBox.max.y;
+      const col = new Float32Array(p.count * 3);
+      for (let i = 0; i < p.count; i++){
+        const k = lo + (hi - lo) * Math.pow((p.getY(i) - y0) / (y1 - y0 || 1), 0.8);
+        col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k;
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      return g;
+    };
     this._tg = {
       trunk: mk(new THREE.CylinderGeometry(0.16, 0.26, 1, 6).translate(0, 0.5, 0)),
-      blob: mk(new THREE.IcosahedronGeometry(1, 1)),
-      blob0: mk(new THREE.IcosahedronGeometry(1, 0)),
-      cone: mk(new THREE.ConeGeometry(1, 1, 8)),
+      blob: mk(shade(new THREE.IcosahedronGeometry(1, 1), 0.62, 1.12)),
+      blob0: mk(shade(new THREE.IcosahedronGeometry(1, 0), 0.66, 1.1)),
+      cone: mk(shade(new THREE.ConeGeometry(1, 1, 8), 0.6, 1.15)),
       cactus: mk(new THREE.CapsuleGeometry(0.3, 1, 3, 8).translate(0, 0.5, 0)),
       arm: mk(new THREE.CapsuleGeometry(0.2, 1, 3, 6).translate(0, 0.5, 0)),
       rock: mk(new THREE.DodecahedronGeometry(1, 0)),
-      mesa: mk(new THREE.CylinderGeometry(1, 1.15, 1, 9, 1).translate(0, 0.5, 0)),
+      mesa: mk(mesaGeometry()),
       dune: mk(new THREE.SphereGeometry(1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2))
     };
     return this._tg;
   }
-  buildTrees(list, parent, T, scaleAll){
+  buildTrees(list, parent, T, scaleAll, shadows){
     const G = this.treeGeos();
     const parts = {};                 // key -> [{m, color}]
     const add = (key, geo, mat, m, color) => {
@@ -490,6 +688,7 @@ export class World {
       trunk: lam('#6b4a32'), birchTrunk: lam('#e8e4da'), leaf: lam('#ffffff', true), cactus: lam('#ffffff', true),
       rock: lam('#ffffff', true), mesa: lam('#ffffff', true), dune: lam('#ffffff')
     });
+    mats.leaf.vertexColors = true; mats.mesa.vertexColors = true;
     for (const m of Object.values(mats)) m.userData.shared = true;
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3();
     const E = new THREE.Euler();
@@ -535,7 +734,7 @@ export class World {
         add('mesa', G.mesa, mats.mesa, comp(t.x, t.y, t.z, t.r, t.h, t.r * (0.8 + v * 0.4), t.rot),
             hsl(0.04 + v * 0.03, 0.5, 0.45 + v * 0.1));
       } else if (t.kind === 'dune'){
-        add('dune', G.dune, mats.dune, comp(t.x, t.y - 2, t.z, t.r, t.h, t.r * 0.7, t.rot), hsl(0.17, 0.3, 0.5 + v * 0.08));
+        add('dune', G.dune, mats.dune, comp(t.x, t.y - 2, t.z, t.r, t.h, t.r * 0.7, t.rot), hsl(0.2 + v * 0.03, 0.3, 0.38 + v * 0.08));
       } else {     // palo verde
         add('trunk', G.trunk, mats.trunk, comp(t.x, t.y, t.z, sc * 0.6, (t.trunk + 0.4) * sc, sc * 0.6));
         add('leaf', G.blob0, mats.leaf, comp(t.x, t.y + t.h * sc, t.z, t.r * sc, t.r * 0.45 * sc, t.r * sc, t.rot),
@@ -553,6 +752,7 @@ export class World {
       inst.instanceMatrix.needsUpdate = true;
       if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
       inst.computeBoundingSphere();
+      if (shadows){ inst.castShadow = true; inst.receiveShadow = true; }
       parent.add(inst);
     }
   }
@@ -573,6 +773,9 @@ export class World {
       return { x: cx + ex * (k + d), z: cz + ez * (k + d) };
     };
     const hAt = (x, z) => h.heightAt(Math.max(b.minX, Math.min(b.maxX, x)), Math.max(b.minZ, Math.min(b.maxZ, z))) - 6;
+    // links: the sea lies off one side of the hole, square to its line
+    const sea = this.seaDir;
+    const offSea = p => !sea || (p.x - cx) * sea.x + (p.z - cz) * sea.z < Math.abs(sea.x) * hw + Math.abs(sea.z) * hd + 40;
     if (h.theme === 'pines'){
       for (let i = 0; i < 520; i++){
         const p = ringPoint(-12, 420);
@@ -586,10 +789,12 @@ export class World {
     } else if (h.theme === 'links'){
       for (let i = 0; i < 90; i++){
         const p = ringPoint(30, 700);
+        if (!offSea(p)) continue;
         list.push({ x: p.x, z: p.z, y: hAt(p.x, p.z), kind: 'dune', r: 30 + rnd() * 60, h: 6 + rnd() * 14, rot: rnd() * 6, tint: rnd() });
       }
       for (let i = 0; i < 160; i++){
         const p = ringPoint(-10, 200);
+        if (!offSea(p)) continue;
         list.push({ x: p.x, z: p.z, y: hAt(p.x, p.z) + 5.5, kind: 'gorse', r: 1.5 + rnd() * 2, h: 1, rot: rnd() * 6, tint: rnd() });
       }
     } else {
@@ -606,23 +811,53 @@ export class World {
     }
     this.buildTrees(list, this.sceneryGroup, T, 1);
 
-    // far mountains to give the horizon a shape (no fog, pre-tinted)
-    const mcol = new THREE.Color(T.fog).lerp(new THREE.Color(h.theme === 'mesa' ? '#b7745a' : h.theme === 'links' ? '#7f9188' : '#5f8a86'), 0.4);
-    const mm = new THREE.MeshBasicMaterial({ color: mcol, fog: false });
-    const mg = new THREE.ConeGeometry(1, 1, 7, 1);
-    const n = 26;
-    const inst = new THREE.InstancedMesh(mg, mm, n);
-    const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3();
+    // horizon: two ridgelines, the far one paler with distance
+    const R = THEME_RIDGES[h.theme] || THEME_RIDGES.pines;
+    for (const layer of R.layers) this.sceneryGroup.add(ridge(h.seed + layer.salt, cx, cz, layer, T.fog, sea));
+    if (sea) this.sceneryGroup.add(this.buildSea(h, sea));
+  }
+
+  // links holes run beside the sea: a big plane past one side of the course
+  buildSea(h, sea){
+    const b = h.bounds;
+    const lvl = Math.min(h.heightAt(b.minX, b.minZ), h.heightAt(b.maxX, b.maxZ), h.heightAt(b.minX, b.maxZ), h.heightAt(b.maxX, b.minZ)) - 1.2;
+    const nm = this.waterNormal().clone();
+    nm.repeat.set(160, 160); nm.userData.shared = false;
+    const m = new THREE.MeshPhongMaterial({ color: '#3f7486', specular: 0xffffff, shininess: 90, normalMap: nm,
+                                            normalScale: new THREE.Vector2(0.5, 0.5) });
+    const g = new THREE.PlaneGeometry(9000, 9000);
+    g.rotateX(-Math.PI / 2);
+    const w = new THREE.Mesh(g, m);
+    const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
+    const reach = Math.abs(sea.x) * (b.maxX - b.minX) / 2 + Math.abs(sea.z) * (b.maxZ - b.minZ) / 2;
+    w.position.set(cx + sea.x * (reach + 4500 + 60), lvl, cz + sea.z * (reach + 4500 + 60));
+    this.seaMesh = w;
+    return w;
+  }
+
+  /* ---- grass tufts in the rough: swaying, faded with distance, and
+     cleared around the ball so it is never hidden ---- */
+  buildGrass(h, pts){
+    this.grass = null;
+    if (this.quality !== 'high' || !pts || !pts.length) return;
+    const specs = Object.values(THEME_GRASS[h.theme] || THEME_GRASS.pines);
+    const cols = specs.map(sp => new THREE.Color(h.T[sp.col] || sp.col).multiplyScalar(sp.k));
+    const n = pts.length / 5;
+    const mat = this.grassMat || (this.grassMat = grassMaterial(this));
+    const inst = new THREE.InstancedMesh(grassGeometry(), mat, n);
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3(), P = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
     for (let i = 0; i < n; i++){
-      const a = (i / n) * Math.PI * 2 + rnd() * 0.2;
-      const d = 4200 + rnd() * 900;
-      const hh = 260 + rnd() * 420;
-      P.set(cx + Math.cos(a) * d, hh / 2 - 60, cz + Math.sin(a) * d);
-      S.set(700 + rnd() * 700, hh, 500 + rnd() * 500);
-      Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 6);
-      inst.setMatrixAt(i, M.compose(P, Q, S));
+      const x = pts[i * 5], z = pts[i * 5 + 1], hgt = pts[i * 5 + 2];
+      P.set(x, this.groundAt(x, z) - 0.02, z);
+      Q.setFromAxisAngle(Y, (x * 12.9898 + z * 78.233) % Math.PI);
+      Sv.set(hgt * 1.7, hgt, hgt * 1.7);
+      inst.setMatrixAt(i, M.compose(P, Q, Sv));
+      inst.setColorAt(i, C.copy(cols[pts[i * 5 + 3]]).multiplyScalar(pts[i * 5 + 4]));
     }
-    this.sceneryGroup.add(inst);
+    inst.frustumCulled = false;
+    inst.renderOrder = 1;
+    this.holeGroup.add(inst);
+    this.grass = inst;
   }
 
   /* ---- green grid & slope flow ---- */
@@ -718,6 +953,7 @@ export class World {
       this.ballShadow.material.opacity = 0.38 * Math.max(0.1, 1 - hgt / 30);
     }
     this.glow.position.set(p.x, y, p.z);
+    if (this.grassMat) this.grassMat.userData.u.uBall.value.set(p.x, y, p.z);
     this.glow.material.opacity = Math.min(0.9, Math.max(0, (d - 40) / 120)) * (this.glowBoost || 1);
   }
 
@@ -890,10 +1126,31 @@ export class World {
       if (nm){ nm.offset.x = this.t * 0.012; nm.offset.y = this.t * 0.008; }
     }
     if (this.clouds) this.clouds.rotation.y += dt * 0.0016;
+    if (this.seaMesh){ const nm = this.seaMesh.material.normalMap; nm.offset.x = this.t * 0.004; nm.offset.y = this.t * 0.003; }
+    if (this.grassMat){ this.grassMat.userData.u.uTime.value = this.t; this.grassMat.userData.u.uWind.value = Math.min(1.5, 0.25 + windStrength / 14); }
+    if (this.sun.castShadow && this.sunDir) this.followShadow();
     this.stepParticles(dt);
     this.stepFlow(dt);
   }
   render(){ this.renderer.render(this.scene, this.camera); }
+
+  // centre the shadow map a little ahead of the camera, snapped to its texels so edges don't crawl
+  followShadow(){
+    const c = this.camera, f = this.shadowFocus;
+    const dir = c.getWorldDirection(_v1); dir.y = 0;
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
+    dir.normalize();
+    f.copy(c.position).addScaledVector(dir, SHADOW_R * 0.45);
+    if (this.h) f.y = this.groundAt(f.x, f.z);
+    const d = this.sunDir;
+    const right = _v2.set(0, 1, 0).cross(d).normalize(), up = _v3.copy(d).cross(right).normalize();
+    const texel = SHADOW_R * 2 / this.sun.shadow.mapSize.x;
+    const u = Math.round(f.dot(right) / texel) * texel, v = Math.round(f.dot(up) / texel) * texel, w = f.dot(d);
+    f.copy(right).multiplyScalar(u).addScaledVector(up, v).addScaledVector(d, w);
+    this.sun.target.position.copy(f);
+    this.sun.position.copy(f).addScaledVector(d, 420);
+    this.sun.target.updateMatrixWorld();
+  }
 
   project(p){
     const v = new THREE.Vector3(p.x, p.y, p.z).project(this.camera);
