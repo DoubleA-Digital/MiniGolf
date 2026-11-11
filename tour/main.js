@@ -1094,9 +1094,9 @@ function applyCamera(dt){
    ============================================================ */
 function updatePreview(){
   const p = me(), h = S.h, D = S.D;
-  world.dots.clear();
+  world.dots.clear(); world.groundDots.clear();
   S.preview = null;
-  if (S.phase !== 'address'){ world.dots.commit(); world.setRing(world.target, null); world.setRing(world.ghost, null); return; }
+  if (S.phase !== 'address'){ world.dots.commit(); world.groundDots.commit(); world.setRing(world.target, null); world.setRing(world.ghost, null); return; }
   if (S.mode === 'full'){
     const M = S.meter;
     const power = M.phase === 'power' ? Math.max(0.05, M.m) : M.phase === 'return' || M.phase === 'done' ? M.power : 1;
@@ -1129,7 +1129,7 @@ function updatePreview(){
       const end = landI + Math.floor((n - landI) * show);
       for (let i = landI; i < end; i += 6){
         const a = 0.85 * (1 - (i - landI) / Math.max(1, n - landI) * 0.6);
-        world.dots.push(r.samples[i * 3], r.samples[i * 3 + 1] + 0.03, r.samples[i * 3 + 2], 1, 0.82, 0.3, a, 4);
+        groundDot(r.samples[i * 3], r.samples[i * 3 + 2], 1, 0.82, 0.3, a);
       }
     }
     const land = r.carryPt || r.rest;
@@ -1156,21 +1156,23 @@ function updatePreview(){
       const end = Math.max(2, Math.floor(n * frac));
       for (let i = 2; i < end; i += 2){
         const a = 0.9 * (1 - i / end * 0.7);
-        world.dots.push(r.samples[i * 3], r.samples[i * 3 + 1] + 0.012, r.samples[i * 3 + 2], 1, 1, 1, a, 4);
+        groundDot(r.samples[i * 3], r.samples[i * 3 + 2], 1, 1, 1, a);
       }
     } else {
       // with no read, just the start line
       for (let k = 0.3; k < Math.min(1.6, S.puttPace); k += 0.3){
         const x = p.ball.x + Math.sin(S.aimYaw) * k, z = p.ball.z - Math.cos(S.aimYaw) * k;
-        world.dots.push(x, h.heightAt(x, z) + 0.012, z, 1, 1, 1, 0.8 - k * 0.4, 4);
+        groundDot(x, z, 1, 1, 1, 0.8 - k * 0.4);
       }
     }
     S.preview = { land: flatEnd, putt: r };
     world.setRing(world.target, flatEnd, 0.18, 0.05, '#ffffff', 0.7);
     world.setRing(world.ghost, null);
   }
-  world.dots.commit();
+  world.dots.commit(); world.groundDots.commit();
 }
+// a dot on the drawn mesh, not the analytic surface (they differ by a few cm, enough to bury it)
+function groundDot(x, z, r, g, b, a){ world.groundDots.push(x, world.groundAt(x, z) + 0.02, z, r, g, b, a, 4); }
 
 /* ============================================================
    HUD
@@ -1182,6 +1184,7 @@ function hideControls(){
     $(id).classList.add('hidden');
   world.setRing(world.target, null); world.setRing(world.ghost, null);
   world.dots.clear(); world.dots.commit();
+  world.groundDots.clear(); world.groundDots.commit();
 }
 
 const LIE_COLORS = { tee: '#7fd16a', fairway: '#7fd16a', fringe: '#9be08a', green: '#b6f09a', rough: '#4f9a3f',

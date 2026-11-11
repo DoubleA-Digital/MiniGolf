@@ -304,9 +304,11 @@ export class World {
     this.buildBall();
     this.buildTracer();
     this.dots = new Dots(400);                       // previews
+    // lines lying on the ground (putt read, rollout) skip the depth test so terrain and grass can never hide them
+    this.groundDots = new Dots(400, { depthTest: false, order: 6 });
     this.flow = new Dots(420);                       // green-reading flow
     this.parts = new Dots(900, { order: 6 });       // particles
-    this.scene.add(this.dots.obj, this.flow.obj, this.parts.obj);
+    this.scene.add(this.dots.obj, this.groundDots.obj, this.flow.obj, this.parts.obj);
     this.particles = [];
     this.buildTarget();
     this.buildClouds();
@@ -332,7 +334,7 @@ export class World {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    for (const d of [this.dots, this.flow, this.parts]) if (d) d.mat.uniforms.pr.value = pr;
+    for (const d of [this.dots, this.groundDots, this.flow, this.parts]) if (d) d.mat.uniforms.pr.value = pr;
     this.pr = pr;
   }
 
