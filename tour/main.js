@@ -10,6 +10,7 @@ import { World } from './render.js';
 import { createGolfer, clubKind } from './golfer.js';
 import { sfx, unlock, setMuted, isMuted, startAmbience, stopAmbience } from './audio.js';
 import { clamp, lerp, smooth } from './noise.js';
+import { net, peerError, MAX_PLAYERS } from './net.js';
 
 const $ = id => document.getElementById(id);
 const YD_FT = 3;
@@ -84,7 +85,8 @@ setMuted(!settings.sound);
    ============================================================ */
 const S = {
   phase: 'boot',
-  theme: settings.theme, D: DIFFICULTY[settings.diff],
+  theme: settings.theme, D: DIFFICULTY[settings.diff], diffKey: settings.diff,
+  online: false, meIdx: 0,     // online: every client plays its own ball at the same time
   pars: [], holeIdx: 0, h: null, seed: 0,
   players: [], cur: 0, order: [],
   mode: 'full', allowed: { full: true, chip: false, putt: false },
@@ -167,14 +169,20 @@ function cachedSpeed(carry, launchDeg, spin){
 /* ============================================================
    ROUND FLOW
    ============================================================ */
-function startRound(){
+// opts (online): { seed, theme, holes, diff, roster } shared by the host
+function startRound(opts){
   unlock();
-  const names = playerNames();
-  S.theme = settings.theme;
-  S.D = DIFFICULTY[settings.diff];
-  S.pars = PARS_18.slice(0, settings.holes);
-  S.seed = (Math.random() * 1e9) | 0;
-  S.players = names.map((n, i) => {
+  const online = !!opts;
+  S.online = online;
+  const roster = online ? opts.roster : playerNames().map(name => ({ name }));
+  S.theme = online ? opts.theme : settings.theme;
+  S.diffKey = online ? opts.diff : settings.diff;
+  S.D = DIFFICULTY[S.diffKey];
+  S.pars = PARS_18.slice(0, online ? opts.holes : settings.holes);
+  S.seed = online ? opts.seed : (Math.random() * 1e9) | 0;
+  timers.length = 0;
+  S.players = roster.map((r, i) => {
+    const n = r.name;
     const color = PLAYER_COLORS[i];
     const g = createGolfer(color, ['#d9a57e', '#8d5a3b', '#f0c8a0', '#b97a50'][i]);
     g.setGround((x, z) => world.groundAt(x, z));
@@ -185,16 +193,21 @@ function startRound(){
     ob.visible = false;
     world.scene.add(ob);
     return {
-      name: n, color, isMe: i === 0,
-      avatar: i === 0 ? profile.avatar : ['🦊', '🐼', '🐧'][i - 1], avatarImg: i === 0 ? profile.avatarImg : null,
+      name: n, color, isMe: online ? r.pid === net.myPid : i === 0, pid: r.pid || null, gone: false, remote: null, stateHole: -1,
+      avatar: online ? r.avatar : i === 0 ? profile.avatar : ['🦊', '🐼', '🐧'][i - 1],
+      avatarImg: online ? r.avatarImg : i === 0 ? profile.avatarImg : null,
       scores: new Array(S.pars.length).fill(null), putts: new Array(S.pars.length).fill(0),
       strokes: 0, ball: { x: 0, y: 0, z: 0 }, lie: 'tee', under: null, holed: false, prev: null,
       stats: { fir: 0, firN: 0, gir: 0, longest: 0, birdies: 0 }, girDone: false,
       golfer: g, marker: ob
     };
   });
+  S.meIdx = Math.max(0, S.players.findIndex(p => p.isMe));
   S.order = S.players.map((_, i) => i);
   requestPrep(holeSeed(0), S.pars[0], S.theme);
+  $('onlineOv').classList.add('hidden');
+  $('cardOv').classList.add('hidden');
+  $('holeOv').classList.add('hidden');
   $('menu').classList.add('hidden');
   $('meChip').classList.add('hidden');
   loadHole(0);
@@ -212,6 +225,7 @@ let introTimer = null;
 function loadHole(i){
   S.holeIdx = i;
   S.phase = 'loading';
+  timers.length = 0;
   hideHUD();
   fade(true);
   const round = S.seed;
@@ -227,16 +241,19 @@ function loadHole(i){
     if (i + 1 < S.pars.length) requestPrep(holeSeed(i + 1), S.pars[i + 1], S.theme);
     buildMinimap();
     for (const p of S.players){
-      p.strokes = 0; p.holed = false; p.lie = 'tee'; p.under = null; p.prev = null; p.girDone = false;
-      p.ball = { x: h.tee.x, y: h.tee.y + 0.03, z: h.tee.z };
       p.marker.visible = false;
+      // a faster friend may already have played this hole: keep what they sent
+      if (p.stateHole === i) continue;
+      p.strokes = 0; p.holed = false; p.lie = 'tee'; p.under = null; p.prev = null; p.girDone = false; p.remote = null;
+      p.ball = { x: h.tee.x, y: h.tee.y + 0.03, z: h.tee.z };
+      if (p.gone){ p.holed = true; p.scores[i] = STROKE_CAP; }
     }
     // honours: best score on the last hole tees off first
-    if (i > 0){
+    if (i > 0 && !S.online){
       S.order = S.players.map((_, k) => k).sort((a, b) =>
         (S.players[a].scores[i - 1] - S.players[b].scores[i - 1]) || (a - b));
     }
-    S.cur = S.order[0];
+    S.cur = S.online ? S.meIdx : S.order[0];
     S.shot = null;
     world.setTracer(null);
     startAmbience(h.wind.mph);
@@ -254,7 +271,9 @@ function startFlyover(){
   $('iPar').textContent = `PAR ${h.par}`;
   $('iYds').innerHTML = `<b>${h.length}</b> yards · wind ${h.wind.mph} mph`;
   const p = me();
-  $('iWho').innerHTML = `<span class="av" style="--pc:${p.color}">${avatarHTML(p)}</span>${esc(p.name)} on the tee`;
+  $('iWho').innerHTML = S.online
+    ? `${S.players.map(q => `<span class="av" style="--pc:${q.color}">${avatarHTML(q)}</span>`).join('')}Everyone tees off together`
+    : `<span class="av" style="--pc:${p.color}">${avatarHTML(p)}</span>${esc(p.name)} on the tee`;
   $('intro').classList.add('on');
   S.fly = { t: 0, dur: reduceMotion ? 0.01 : clamp(2.6 + h.length / 140, 3.4, 6.6) };
   cam.cut = true;
@@ -297,7 +316,7 @@ function beginTurn(){
   for (const q of S.players){
     q.golfer.group.visible = q === p;
     q.marker.visible = q !== p && !q.holed;
-    if (q !== p) q.marker.position.set(q.ball.x, world.visualY(q.ball), q.ball.z);
+    if (q !== p && !q.remote) q.marker.position.set(q.ball.x, world.visualY(q.ball), q.ball.z);
   }
   placeGolfer();
   S.previewDirty = true;
@@ -417,7 +436,7 @@ function planChip(){
   // land it where it will release to the hole (calm air)
   const p = me(), h = S.h, sh = SHOTS[S.shotType];
   const dPin = hdist(p.ball, h.pin);
-  if (settings.diff === 'tour'){
+  if (S.diffKey === 'tour'){
     S.chipTarget = clamp(dPin * (S.shotType === 'bump' ? 0.4 : S.shotType === 'flop' ? 0.92 : 0.75), 0.8, sh.maxCarry);
     return;
   }
@@ -430,8 +449,8 @@ function planChip(){
     if (along < dPin) lo = mid; else hi = mid;
   }
   let t = (lo + hi) / 2;
-  if (settings.diff === 'pro') t = Math.round(t / 2) * 2;
-  else if (settings.diff === 'tour') t = dPin * (S.shotType === 'bump' ? 0.4 : S.shotType === 'flop' ? 0.92 : 0.75);
+  if (S.diffKey === 'pro') t = Math.round(t / 2) * 2;
+  else if (S.diffKey === 'tour') t = dPin * (S.shotType === 'bump' ? 0.4 : S.shotType === 'flop' ? 0.92 : 0.75);
   S.chipTarget = clamp(t, 0.8, sh.maxCarry);
 }
 
@@ -562,6 +581,7 @@ function launchShot(sim, kind, info){
              landT: sim.carryPt ? sim.carryPt.t : 0, cut: false, speed: 1, done: false, landCam: null,
              side: Math.random() < 0.5 ? -1 : 1, holedAt: null };
   sfx.hit(info.kind, info.quality ?? 1);
+  if (S.online) sendShot(sim);
   if (kind === 'full'){
     const big = info.kind === 'driver' || info.kind === 'wood';
     cam.shake = big ? 0.09 : 0.05;
@@ -753,6 +773,7 @@ function pickUp(){
 
 function nextTurn(){
   if (S.phase === 'menu') return;
+  if (S.online){ onlineNextTurn(); return; }
   const left = S.players.filter(p => !p.holed);
   if (!left.length){ endHole(); return; }
   let next;
@@ -772,7 +793,31 @@ function nextTurn(){
   }
 }
 
+function onlineNextTurn(){
+  sendState();
+  const mine = S.players[S.meIdx];
+  if (S.players.every(p => p.holed)){ endHole(); return; }
+  world.setTracer(null);
+  if (!mine.holed){
+    S.cur = S.meIdx;
+    cam.cut = S.shot && S.shot.kind !== 'putt' && hdist(S.shot.from, mine.ball) > 25;
+    beginTurn();
+    return;
+  }
+  // done: watch the others finish
+  S.phase = 'waiting';
+  mine.golfer.group.visible = false;
+  hideControls();
+  for (const q of S.players) q.marker.visible = q !== mine && !q.holed;
+  waitToast();
+}
+function waitToast(){
+  const left = S.players.filter(p => !p.holed).map(p => p.name);
+  if (left.length) toast('Waiting for ' + left.join(', '), 'they are still playing');
+}
+
 function endHole(){
+  if (S.phase === 'holeEnd') return;
   S.phase = 'holeEnd';
   hideHUD();
   const h = S.h, i = S.holeIdx;
@@ -787,9 +832,20 @@ function endHole(){
       <div class="st">${s}</div><div class="tp ${tp < 0 ? 'u' : tp > 0 ? 'o' : ''}">${fmtPar(tp)}</div></div>`;
   }).join('');
   $('hoNext').textContent = i >= S.pars.length - 1 ? 'Final results' : `Hole ${i + 2}`;
+  // online, the host walks the group to the next tee
+  const wait = S.online && !net.isHost;
+  $('hoNext').disabled = wait;
+  if (wait) $('hoNext').textContent = 'Waiting for the host…';
   $('holeOv').classList.remove('hidden');
 }
 function nextHole(){
+  if (S.online){
+    if (!net.isHost || S.phase !== 'holeEnd') return;
+    net.send({ t: 'next', hole: S.holeIdx + 1 });
+  }
+  goNextHole();
+}
+function goNextHole(){
   $('holeOv').classList.add('hidden');
   if (S.holeIdx >= S.pars.length - 1){ endRound(); return; }
   loadHole(S.holeIdx + 1);
@@ -802,10 +858,10 @@ function toPar(p){
 }
 function totalStrokes(p){ return p.scores.reduce((a, b) => a + (b || 0), 0); }
 
-const bestKey = () => `${S.theme}|${S.pars.length}|${settings.diff}`;
+const bestKey = () => `${S.theme}|${S.pars.length}|${S.diffKey}`;
 function loadBests(){ try{ return JSON.parse(localStorage.getItem('tour_best') || '{}'); }catch(e){ return {}; } }
 function recordBest(){
-  const p0 = S.players[0];
+  const p0 = S.players[S.meIdx];
   if (p0.scores.some(x => x === null)) return false;
   const bests = loadBests(), k = bestKey(), tp = toPar(p0);
   const prev = bests[k];
@@ -825,11 +881,11 @@ function endRound(){
 
 async function awardPoints(){
   const board = S.players.slice().sort((a, b) => toPar(a) - toPar(b));
-  const mine = S.players[0];
+  const mine = S.players[S.meIdx];
   const rank = board.indexOf(mine), n = board.length;
   const placement = n > 1 ? Math.round(100 * (n - 1 - rank) / (n - 1)) : 60;
   const under = mine.scores.reduce((a, s, i) => a + (s !== null && s < S.pars[i] ? 1 : 0), 0);
-  const gained = Math.round((25 + placement + under * 8) * (settings.holes === 18 ? 1.5 : 1));
+  const gained = Math.round((25 + placement + under * 8) * (S.pars.length === 18 ? 1.5 : 1));
   S.lastPoints = gained;
   profile.points += gained;
   saveProfile(); paintChip();
@@ -1397,7 +1453,8 @@ function updateLabels(){
   } else label('live', 'live', '', null, false);
   for (const q of S.players){
     const show = q !== p && !q.holed && S.phase !== 'intro';
-    label('pl' + S.players.indexOf(q), 'pl', `<i style="background:${q.color}"></i>${esc(q.name)}`, { x: q.ball.x, y: q.ball.y + 0.35, z: q.ball.z }, show);
+    const at = q.remote ? q.marker.position : q.ball;
+    label('pl' + S.players.indexOf(q), 'pl', `<i style="background:${q.color}"></i>${esc(q.name)}`, { x: at.x, y: at.y + 0.35, z: at.z }, show);
     if (show){
       const dd = world.camera.position.distanceTo(q.marker.position);
       q.marker.scale.setScalar(Math.max(1, Math.min(12, dd / 11)));
@@ -1500,7 +1557,7 @@ function drawMinimap(){
   // balls
   for (const q of S.players){
     if (q.holed) continue;
-    const pos = q === p && S.shot && !S.shot.done ? tmpP : q.ball;
+    const pos = q === p && S.shot && !S.shot.done ? tmpP : q.remote ? q.marker.position : q.ball;
     const m = toMap(pos.x, pos.z);
     g.fillStyle = q.color; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
     g.beginPath(); g.arc(m.x, m.y, q === p ? 4 : 3, 0, TAU); g.fill(); g.stroke();
@@ -1565,7 +1622,7 @@ function showCard(final){
     return r;
   }).join('');
   $('cardTable').innerHTML = head + parRow + rows;
-  const p0 = S.players[0];
+  const p0 = S.players[S.meIdx];
   const played = p0.scores.filter(s => s !== null).length;
   const putts = p0.putts.reduce((a, b) => a + b, 0);
   $('cardStats').innerHTML = [
@@ -1584,8 +1641,14 @@ function showCard(final){
     $('cardSub').textContent = `${THEMES[S.theme].name} · ${S.D.name}` + (S.lastPoints ? ` · +${S.lastPoints} points` : '') +
       (S.newBest ? ' · New personal best!' : '');
     if (S.newBest){ sfx.fanfare(); }
-    $('cardBtns').innerHTML = '<button class="btn primary" id="cbAgain">Play again</button><button class="btn ghost" id="cbMenu">Main menu</button>';
-    $('cbAgain').onclick = () => { $('cardOv').classList.add('hidden'); timers.length = 0; cleanupPlayers(); startRound(); };
+    const guest = S.online && !net.isHost;
+    $('cardBtns').innerHTML = `<button class="btn primary" id="cbAgain" ${guest ? 'disabled' : ''}>${guest ? 'Waiting for the host…' : 'Play again'}</button>` +
+      `<button class="btn ghost" id="cbMenu">${S.online ? 'Leave' : 'Main menu'}</button>`;
+    $('cbAgain').onclick = () => {
+      if (guest) return;
+      $('cardOv').classList.add('hidden'); timers.length = 0; cleanupPlayers();
+      if (S.online) hostStart(); else startRound();
+    };
     $('cbMenu').onclick = () => { $('cardOv').classList.add('hidden'); toMenu(); };
   } else {
     $('cardTitle').textContent = 'Scorecard';
@@ -1925,6 +1988,8 @@ function buildAttract(){
   });
 }
 function toMenu(){
+  if (net.online) net.leave();
+  S.online = false; S.meIdx = 0;
   timers.length = 0;
   cleanupPlayers();
   S.players = [];
@@ -1942,6 +2007,212 @@ function toMenu(){
 }
 
 /* ============================================================
+   ONLINE — a party of up to four, each playing their own ball at once
+   ============================================================ */
+const findPid = pid => S.players.find(p => p.pid === pid);
+
+// my shot, as a light path the others replay (30 Hz, centimetre precision)
+function sendShot(sim){
+  const s = sim.samples, path = [];
+  for (let i = 0; i < s.length; i += 6) path.push(Math.round(s[i] * 100) / 100, Math.round(s[i + 1] * 100) / 100, Math.round(s[i + 2] * 100) / 100);
+  const n = s.length;
+  path.push(Math.round(s[n - 3] * 100) / 100, Math.round(s[n - 2] * 100) / 100, Math.round(s[n - 1] * 100) / 100);
+  net.send({ t: 'shot', hole: S.holeIdx, path, dt: sim.sampleDt * 2 });
+}
+// where my ball ended up, and my card: the owner of a ball is its only authority
+function sendState(){
+  const p = S.players[S.meIdx];
+  if (!S.online || !p) return;
+  net.send({ t: 'state', hole: S.holeIdx, ball: p.ball, lie: p.lie, strokes: p.strokes, holed: p.holed,
+             scores: p.scores, putts: p.putts });
+}
+
+net.on('shot', m => {
+  const q = findPid(m.pid);
+  if (!q || q.isMe || !S.online || m.hole !== S.holeIdx || S.phase === 'loading' || !Array.isArray(m.path)) return;
+  q.remote = { path: m.path, dt: m.dt || 1 / 30, t: 0 };
+  q.marker.visible = !q.holed;
+});
+net.on('state', m => {
+  const q = findPid(m.pid);
+  if (!q || q.isMe || !S.online || m.hole !== S.holeIdx) return;
+  const wasHoled = q.holed;
+  q.stateHole = m.hole;
+  q.ball = m.ball; q.lie = m.lie; q.strokes = m.strokes; q.holed = !!m.holed;
+  if (Array.isArray(m.scores)) q.scores = m.scores.slice(0, S.pars.length);
+  if (Array.isArray(m.putts)) q.putts = m.putts.slice(0, S.pars.length);
+  q.remote = null;
+  if (S.h){
+    q.marker.position.set(q.ball.x, world.visualY(q.ball), q.ball.z);
+    q.marker.visible = !q.holed && S.phase !== 'loading' && S.phase !== 'intro';
+  }
+  if (q.holed && !wasHoled && S.h){
+    const sc = q.scores[S.holeIdx], rel = sc - S.h.par;
+    toast(`${q.name} · ${sc === 1 ? 'Hole in one!' : SCORE_NAMES[rel] || (rel > 0 ? '+' + rel : rel)}`, `${sc} stroke${sc === 1 ? '' : 's'}`);
+    if (rel < 0) sfx.crowd(0.6, 2);
+  }
+  if (S.phase === 'address' || S.phase === 'flight' || S.phase === 'result' || S.phase === 'waiting') refreshHUD();
+  if (S.phase === 'waiting'){ if (S.players.every(p => p.holed)) endHole(); else if (q.holed && !wasHoled) later(waitToast, 2200); }
+});
+net.on('next', m => {
+  if (!S.online || m.hole !== S.holeIdx + 1) return;
+  if (S.phase !== 'holeEnd'){
+    // got ahead of us (a lost message): settle this hole as it stands
+    for (const q of S.players) if (!q.holed){ q.holed = true; if (q.scores[S.holeIdx] === null) q.scores[S.holeIdx] = STROKE_CAP; }
+  }
+  goNextHole();
+});
+net.on('start', m => {
+  if (net.isHost) return;
+  net.started = true;
+  if (S.players.length) cleanupPlayers();
+  startRound(m);
+});
+net.on('left', m => {
+  if (!S.online) return;
+  const q = findPid(m.pid);
+  if (!q || q.gone) return;
+  q.gone = true; q.remote = null; q.marker.visible = false;
+  if (!q.holed){ q.holed = true; if (q.scores[S.holeIdx] === null) q.scores[S.holeIdx] = STROKE_CAP; }
+  toast(`${q.name} left the round`, '');
+  if (S.phase === 'address' || S.phase === 'waiting') refreshHUD();
+  if (S.phase === 'waiting' && S.players.every(p => p.holed)) endHole();
+});
+net.onGone = () => {
+  if (S.online && S.phase !== 'menu'){
+    banner('Host left', 'Back to the clubhouse', false);
+    setTimeout(() => { $('cardOv').classList.add('hidden'); toMenu(); }, 2400);
+  } else lobbyMsg('The host closed the room.', false);
+  paintLobby();
+};
+
+// a friend's ball replays their shot; their state message then pins it down
+function stepRemote(dt){
+  for (const q of S.players){
+    const R = q.remote;
+    if (!R || q.isMe) continue;
+    R.t += dt;
+    const n = R.path.length / 3, f = Math.min(n - 1, R.t / R.dt);
+    const i = Math.floor(f), j = Math.min(n - 1, i + 1), k = f - i, P = R.path;
+    const pt = { x: P[i * 3] + (P[j * 3] - P[i * 3]) * k, y: P[i * 3 + 1] + (P[j * 3 + 1] - P[i * 3 + 1]) * k, z: P[i * 3 + 2] + (P[j * 3 + 2] - P[i * 3 + 2]) * k };
+    q.marker.position.set(pt.x, world.visualY(pt), pt.z);
+    const dd = world.camera.position.distanceTo(q.marker.position);
+    q.marker.scale.setScalar(Math.max(1, Math.min(12, dd / 11)));
+    if (f >= n - 1) q.remote = null;
+  }
+}
+
+/* ---------- lobby ---------- */
+const myEntry = () => ({ name: playerNames()[0] || profile.name || 'Player', avatar: profile.avatar, avatarImg: profile.avatarImg });
+function lobbyMsg(t, ok){
+  const el = $('olLobby').classList.contains('hidden') ? $('olMsg') : $('olMsg2');
+  el.textContent = t || ''; el.className = 'olmsg' + (ok ? ' ok' : '');
+}
+function lobbyView(lobby){
+  $('olChoose').classList.toggle('hidden', lobby);
+  $('olLobby').classList.toggle('hidden', !lobby);
+}
+function openOnline(code){
+  $('onlineOv').classList.remove('hidden');
+  lobbyView(false);
+  $('olSetup').textContent = `Hosting uses your setup: ${THEMES[settings.theme].name} · ${settings.holes} holes · ${DIFFICULTY[settings.diff].name}. Everyone plays the hole at the same time on their own screen.`;
+  $('olMsg').textContent = '';
+  $('olHost').disabled = false; $('olJoin').disabled = false;
+  if (code){ $('olCode').value = code; joinRoom(); }
+}
+function paintLobby(){
+  if ($('onlineOv').classList.contains('hidden')) return;
+  const R = net.roster;
+  $('olShow').textContent = net.code || '····';
+  $('olRole').textContent = net.isHost ? 'YOUR ROOM CODE' : 'ROOM';
+  $('olList').innerHTML = R.map((r, i) => `<div class="hs-row"><span class="av" style="--pc:${PLAYER_COLORS[i]}">${avatarHTML(r)}</span>
+    <div class="n">${esc(r.name)}${r.pid === net.myPid ? '<span class="you">YOU</span>' : ''}</div>${i === 0 ? '<span class="hostTag">HOST</span>' : ''}</div>`).join('') +
+    Array.from({ length: Math.max(0, MAX_PLAYERS - R.length) }, () => '<div class="hs-row" style="opacity:.35"><div class="n">Open seat</div></div>').join('');
+  const st = $('olStart');
+  st.classList.toggle('hidden', !net.isHost);
+  st.disabled = R.length < 2;
+  if (net.isHost) $('olInfo').textContent = R.length < 2 ? 'Share the code. Start once a friend joins.' :
+    `${R.length} players · ${THEMES[settings.theme].name} · ${settings.holes} holes · ${DIFFICULTY[settings.diff].name}`;
+  else $('olInfo').textContent = net.online ? 'You are in. The host will start the round.' : '';
+}
+net.onRoster = paintLobby;
+
+async function hostRoom(){
+  unlock(); sfx.ui();
+  $('olHost').disabled = true;
+  lobbyMsg('Opening a room…', true);
+  try{
+    await net.host(myEntry());
+    lobbyView(true);
+    lobbyMsg('', true);
+    paintLobby();
+  }catch(e){
+    net.leave();
+    lobbyMsg(peerError(e).msg, false);
+    $('olHost').disabled = false;
+  }
+}
+async function joinRoom(){
+  unlock();
+  const code = $('olCode').value.trim().toUpperCase();
+  if (!/^[A-Z2-9]{4}$/.test(code)){ lobbyMsg('Enter the 4-character code from the host.', false); return; }
+  $('olJoin').disabled = true;
+  lobbyMsg('Connecting…', true);
+  try{
+    await net.join(code, myEntry());
+    lobbyView(true);
+    lobbyMsg('', true);
+    paintLobby();
+    sfx.select();
+  }catch(e){
+    net.leave();
+    lobbyMsg(peerError(e).msg, false);
+    $('olJoin').disabled = false;
+  }
+}
+function hostStart(){
+  if (!net.isHost) return;
+  if (net.roster.length < 2){
+    toast('Everyone else left', 'Back to the lobby');
+    toMenuKeepRoom();
+    return;
+  }
+  net.started = true;
+  const opts = { t: 'start', seed: (Math.random() * 1e9) | 0, theme: settings.theme, holes: settings.holes, diff: settings.diff,
+                 roster: net.roster.map(r => ({ ...r })) };
+  net.send(opts);
+  startRound(opts);
+}
+// back to the lobby with the room still open
+function toMenuKeepRoom(){
+  timers.length = 0; cleanupPlayers(); S.players = []; S.online = false; S.phase = 'menu'; S.shot = null;
+  net.started = false;
+  hideHUD(); stopAmbience();
+  $('menu').classList.remove('hidden'); $('meChip').classList.remove('hidden');
+  paintMenu(); buildAttract();
+  $('onlineOv').classList.remove('hidden'); lobbyView(true); paintLobby();
+}
+
+$('bOnline').onclick = () => { sfx.ui(); openOnline(); };
+$('olHost').onclick = hostRoom;
+$('olJoin').onclick = joinRoom;
+$('olCode').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
+$('olCode').addEventListener('input', () => { $('olCode').value = $('olCode').value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+$('olClose').onclick = () => { $('onlineOv').classList.add('hidden'); };
+$('olLeave').onclick = () => { net.leave(); lobbyView(false); $('olHost').disabled = false; $('olJoin').disabled = false; lobbyMsg('', false); };
+$('olStart').onclick = () => { if (net.roster.length >= 2){ sfx.select(); hostStart(); } };
+$('olShare').onclick = async () => {
+  const link = location.origin + location.pathname + '?room=' + net.code;
+  const btn = $('olShare');
+  try{
+    if (navigator.share && matchMedia('(pointer: coarse)').matches){ await navigator.share({ title: 'Tour Golf', text: 'Join my round', url: link }); return; }
+    await navigator.clipboard.writeText(link);
+    btn.textContent = 'Link copied!';
+  }catch(e){ btn.textContent = link; }
+  setTimeout(() => { btn.textContent = 'Copy invite link'; }, 2200);
+};
+
+/* ============================================================
    MAIN LOOP
    ============================================================ */
 let last = performance.now();
@@ -1954,7 +2225,8 @@ function frame(now){
   stepTimers(dt);
   const p = me();
 
-  if (S.phase === 'menu' || S.phase === 'holeEnd' || S.phase === 'over') cameraMenu();
+  if (S.online) stepRemote(dt);
+  if (S.phase === 'menu' || S.phase === 'holeEnd' || S.phase === 'over' || S.phase === 'waiting') cameraMenu();
   else if (S.phase === 'intro' && S.fly) cameraFlyover(dt);
   else if (S.phase === 'address' || S.phase === 'result'){
     if (S.phase === 'address'){
@@ -2017,6 +2289,15 @@ async function boot(){
   requestAnimationFrame(t => { last = t; frame(t); });
   await toMenu();
   $('loading').classList.add('fade');
+  try{
+    const room = new URLSearchParams(location.search).get('room');
+    if (room && /^[A-Za-z2-9]{4}$/.test(room)){
+      history.replaceState(null, '', location.pathname);
+      // the PeerJS script is deferred: wait for it before joining
+      const go = () => openOnline(room.toUpperCase());
+      if (typeof Peer === 'function') go(); else window.addEventListener('load', go, { once: true });
+    }
+  }catch(e){}
   setTimeout(() => $('loading').remove(), 700);
   // pre-warm the speed solver for every club at full power
   setTimeout(() => { for (const c of CLUBS.slice(0, PUTTER)) cachedSpeed(c.carry, c.launch, c.spin); }, 400);

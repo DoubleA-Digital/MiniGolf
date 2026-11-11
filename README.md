@@ -101,6 +101,13 @@ menu: full 3D championship golf built on three.js.
   spot, a tracer and a live yardage counter.
 - **Rules:** water and OB penalties, stroke and distance, honours, and
   farthest-from-the-hole plays first. 1–4 players pass-and-play.
+- **Online parties (2–4):** *Play online* hosts a room with a 4-letter code or
+  joins one (or open an invite link, `?room=CODE`). Everyone plays the hole at
+  the same time on their own screen, sees friends' balls fly in their colours
+  and a live leaderboard, and the host moves the group to the next tee. Same
+  PeerJS star as Mini Golf (`tour/net.js`, peer ids `tgolf-CODE`, same
+  `?peer=` custom server). Each client sends its own shot path and final ball
+  state; anyone silent for 25 s is dropped and scored at the stroke cap.
 - **Stats and progression:** fairways, greens in regulation, putts, longest
   drive and personal bests. It shares the Mini Golf profile, points and
   leaderboard.

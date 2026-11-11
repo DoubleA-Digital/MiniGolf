@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700;800;900&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
 </script>
@@ -310,6 +311,22 @@ button{ font: inherit; color: inherit; }
 .panel .sub{ font-family: var(--cond); font-weight: 700; font-size: 13px; letter-spacing: 1.6px; color: var(--dim); text-transform: uppercase; margin-bottom: 14px; }
 .panel .btns{ display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
 .panel .btns .btn{ flex: 1; font-size: 16px; padding: 13px 14px; }
+.btn.online{ display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 8px; width: 100%;
+  background: rgba(67,209,122,.14); border: 1px solid rgba(67,209,122,.45); color: #fff; padding: 11px 16px; }
+.btn.online b{ font-size: 18px; letter-spacing: .3px; }
+.btn.online small{ font-family: var(--cond); font-weight: 700; font-size: 12px; letter-spacing: 1px; opacity: .7; text-transform: uppercase; }
+.btn.wide{ width: 100%; }
+.btn:disabled{ opacity: .45; cursor: default; transform: none; }
+.olnote{ margin: 0 0 12px; color: var(--dim); font-size: 14px; line-height: 1.4; }
+.oljoin{ display: flex; gap: 8px; margin-top: 10px; }
+.oljoin input{ flex: 1; min-width: 0; background: rgba(255,255,255,.08); border: 1px solid var(--line); border-radius: 12px; color: #fff;
+  font-family: var(--cond); font-weight: 900; font-size: 24px; letter-spacing: 8px; text-align: center; text-transform: uppercase; padding: 8px; outline: none; }
+.oljoin input:focus{ border-color: var(--gold); }
+.olmsg{ min-height: 20px; margin-top: 10px; font-size: 14px; color: #ff9d94; }
+.olmsg.ok{ color: var(--green); }
+.olcode{ font-family: var(--cond); font-weight: 900; font-size: 64px; letter-spacing: 14px; text-align: center; color: var(--gold); line-height: 1; margin: 4px 0 12px; }
+.hs-row .you{ font-size: 11px; letter-spacing: 1px; color: var(--gold); margin-left: 6px; }
+.hs-row .hostTag{ font-family: var(--cond); font-weight: 800; font-size: 11px; letter-spacing: 1.4px; padding: 3px 8px; border-radius: 999px; background: rgba(255,207,74,.18); color: var(--gold); }
 .pmenu{ display: flex; flex-direction: column; gap: 8px; max-width: 340px; }
 .pmenu .btn{ width: 100%; }
 
@@ -551,6 +568,7 @@ table.card td .sc{ display: inline-grid; place-items: center; width: 24px; heigh
     <div class="msec"><h3>Players</h3><div class="prow" id="players"></div></div>
 
     <button class="btn primary" id="bTeeOff">Tee Off</button>
+    <button class="btn online" id="bOnline"><b>Play online</b><small>Party of 2–4 · room code</small></button>
     <div class="mrow">
       <button class="btn ghost" id="bHelp">How to play</button>
       <button class="btn ghost" id="bBack">Mini Golf</button>
@@ -584,6 +602,29 @@ table.card td .sc{ display: inline-grid; place-items: center; width: 24px; heigh
   <div class="sub" id="hoSub">HOLE 1 COMPLETE</div>
   <div class="hs-list" id="hoList"></div>
   <div class="btns"><button class="btn primary" id="hoNext">Next hole</button></div>
+</div></div>
+
+<div class="overlay hidden" id="onlineOv"><div class="panel" style="max-width:460px">
+  <div id="olChoose">
+    <h2>Play online</h2><div class="sub">2 to 4 players · everyone plays at once</div>
+    <p class="olnote" id="olSetup"></p>
+    <button class="btn primary wide" id="olHost">Host a room</button>
+    <div class="oljoin">
+      <input id="olCode" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Room code">
+      <button class="btn ghost" id="olJoin">Join</button>
+    </div>
+    <div class="olmsg" id="olMsg"></div>
+    <div class="btns"><button class="btn ghost" id="olClose">Back</button></div>
+  </div>
+  <div id="olLobby" class="hidden">
+    <div class="sub" id="olRole">ROOM CODE</div>
+    <div class="olcode" id="olShow">····</div>
+    <button class="btn ghost wide" id="olShare">Copy invite link</button>
+    <p class="olnote" id="olInfo"></p>
+    <div class="hs-list" id="olList"></div>
+    <div class="olmsg" id="olMsg2"></div>
+    <div class="btns"><button class="btn ghost" id="olLeave">Leave</button><button class="btn primary" id="olStart">Start round</button></div>
+  </div>
 </div></div>
 
 <div class="overlay hidden" id="helpOv"><div class="panel" style="max-width:760px">
