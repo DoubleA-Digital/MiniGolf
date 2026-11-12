@@ -11,8 +11,9 @@ Also listed on [CoolMattGames](https://coolmattgames.cool).
 ## How it works
 
 Everything is one `index.html` — no build step, no framework, no server.
-PeerJS handles the peer-to-peer link (same approach as
-[Felt](https://github.com/DoubleA-Digital/Felt)).
+Players are linked through `relay-peer.js`, a small stand-in for the PeerJS
+API that carries messages over Supabase Realtime (a plain websocket on 443).
+The game code still talks to it as if it were PeerJS.
 
 **Multiplayer.** The host opens a room and shares the code; everyone else
 joins and appears in the lobby. Connections form a star: guests talk to the
@@ -107,8 +108,8 @@ menu: full 3D championship golf built on three.js.
   joins one (or open an invite link, `?room=CODE`). Everyone plays the hole at
   the same time on their own screen, sees friends' balls fly in their colours
   and a live leaderboard, and the host moves the group to the next tee. Same
-  PeerJS star as Mini Golf (`tour/net.js`, peer ids `tgolf-CODE`, same
-  `?peer=` custom server). Each client sends its own shot path and final ball
+  star and Supabase relay as Mini Golf (`tour/net.js`, room ids `tgolf-CODE`,
+  same `?peer=` custom server). Each client sends its own shot path and final ball
   state; anyone silent for 25 s is dropped and scored at the stroke cap.
 - **Stats and progression:** fairways, greens in regulation, putts, longest
   drive and personal bests. It shares the Mini Golf profile, points and
@@ -179,34 +180,29 @@ Open it in two browsers (or a phone on the same Wi-Fi) to test multiplayer.
 
 ## If nobody can join
 
-Hosting and joining need a **signalling server** to introduce the peers. The
-default is the free PeerJS cloud at `peerjs.com`, and some networks block it
-outright — school and office Wi-Fi especially. The symptom is specific: DNS
-resolves, TCP connects on 443, and then the TLS handshake is reset.
+Online play used to go through the free PeerJS cloud and WebRTC. Many school
+and office networks block `peerjs.com` (DNS resolves, TCP connects on 443,
+then the TLS handshake is reset), and WebRTC with no TURN server fails between
+a lot of phones anyway. So by default both games now use `relay-peer.js`,
+which implements the slice of the PeerJS API the games use:
 
-Check it from a terminal:
+- A host owns the Realtime channel `pj:<room id>`, and guests join it.
+- Every message names its sender and recipient.
+- Presence reports a closed tab straight away and catches a room code that is
+  already taken.
 
-```bash
-curl -sv -m 10 https://0.peerjs.com/peerjs/id 2>&1 | grep -E "Connected|reset|error"
-```
+If Supabase itself is unreachable, the menu shows the network warning as
+before.
 
-If that fails while other sites work, the network is the problem, not the game.
-The menu runs the same check on load and says so before anyone tries to host.
-
-Two ways around it:
-
-1. **Use mobile data or a hotspot** — quickest test, and usually enough.
-2. **Run your own PeerServer** and point the game at it:
-   `?peer=your-host:443/path`, or paste it into the box on the warning banner.
-   It is remembered. A server is `npx peerjs --port 9000 --path /mg`, deployed
-   anywhere that supports WebSockets (Railway, Fly, Render — not Vercel
-   serverless).
+To use real PeerJS with your own PeerServer instead, pass
+`?peer=your-host:443/path` or paste it into the box on the warning banner. It
+is remembered. A server is `npx peerjs --port 9000 --path /mg`, deployed
+anywhere that supports WebSockets.
 
 ## Known limitations
 
-- The default PeerJS cloud broker is free and public. Fine for a game with
-  friends; not something to depend on for real traffic, and blocked on some
-  networks (see above).
+- Realtime traffic counts against the Supabase project's free-tier message
+  quota. That is plenty for friends' games, but not for heavy traffic.
 - Joining is closed once the host starts; there is no late join.
 - There is no reconnect. If a guest drops they are marked out for the round;
   if the host drops, the room ends.
