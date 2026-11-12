@@ -78,9 +78,11 @@ profile. The leaderboard is shared; the identity is not portable across devices.
 `tour.html` (modules in `tour/`) is a second, separate game reached from the
 menu: full 3D championship golf built on three.js.
 
-- **Three courses:** Whispering Pines (parkland), Saltmarsh Links (windy, pot
-  bunkers, fescue) and Red Mesa (desert target golf). Every hole is generated
-  from a seed. Rounds are 9 or 18 holes, at Amateur, Pro or Tour difficulty.
+- **Six courses:** Whispering Pines (parkland), Saltmarsh Links (windy, pot
+  bunkers, fescue), Red Mesa (desert target golf), Maple Hollow (autumn hills,
+  creeks across the fairway), Coral Cay (island golf beside the ocean, palms,
+  sandy waste) and Glacier Peaks (alpine, big elevation, snow off the short
+  grass). Every hole is generated from a seed. Rounds are 9 or 18 holes, at Amateur, Pro or Tour difficulty.
 - **Three different skills:**
   - *Full swing:* the PGA Tour 98 three-click arc meter. The golfer's
     backswing follows the meter live, and a strike-point dot shapes a draw,

@@ -5,6 +5,7 @@
    ============================================================ */
 import { makeNoise, smooth, clamp } from './noise.js';
 
+const LEAF = [[196, 72, 34], [222, 120, 40], [214, 160, 52], [160, 52, 30]];
 const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 
 /* The per-pixel pass. Pure, so it can run in a worker. */
@@ -60,7 +61,7 @@ export function paintPixels(h, region, ppy, opts = {}){
           break;
         }
         case 'rough': base = C.rough; k = 1 + mott * 0.11 + grain * 0.09; break;
-        case 'deep':  base = C.deep;  k = 1 + mott * 0.14 + grain * 0.12; break;
+        case 'deep':  base = C.deep;  k = 1 + mott * (T.snow ? 0.04 : 0.14) + grain * (T.snow ? 0.03 : 0.12); break;
         case 'waste': base = C.waste; k = 1 + mott * 0.10 + grain * 0.16 + (hash(i, j * 3) > 0.985 ? -0.25 : 0); break;
         case 'bunker': {
           base = C.sand;
@@ -83,6 +84,11 @@ export function paintPixels(h, region, ppy, opts = {}){
           px[o + 3] = 255;
           continue;
         }
+      }
+      // fallen leaves in the long grass
+      if (T.leaves && (surf === 'rough' || surf === 'deep')){
+        const lf = hash(i * 3 + 1, j * 5 + 2);
+        if (lf > (surf === 'deep' ? 0.9 : 0.955)){ base = LEAF[Math.floor(hash(i, j) * LEAF.length)]; k = 0.85 + lf * 0.2; }
       }
       px[o] = clamp(base[0] * k, 0, 255);
       px[o + 1] = clamp(base[1] * k, 0, 255);
@@ -121,7 +127,7 @@ export function paintRegion(h, region, ppy, opts = {}, pre){
       const rad = (t.kind === 'cactus' ? 0.8 : t.r * 1.05) * ppy;
       if (cx < -rad * 3 || cz < -rad * 3 || cx > W + rad * 3 || cz > D + rad * 3) continue;
       const grd = ctx.createRadialGradient(cx, cz, rad * 0.15, cx, cz, rad * 1.35);
-      grd.addColorStop(0, 'rgba(40,60,40,0.42)');
+      grd.addColorStop(0, T.shadow || 'rgba(40,60,40,0.42)');
       grd.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = grd;
       ctx.beginPath();

@@ -207,13 +207,26 @@ export function genHole(seed, par, themeKey, opts = {}){
       ponds.push({ circles: blob(greenC.x + Math.cos(th) * d, greenC.z + Math.sin(th) * d, r, 3, 1.1) });
     }
   }
+  // a creek: a meandering chain of small pools right across the corridor
+  if (T.creek && rnd() < T.creek){
+    const s = par === 3 ? length * rr(0.36, 0.55) : par === 4 ? length - rr(34, 62) : length - rr(105, 140);
+    const c = atS(s);
+    const span = fairW(s) + r1 + r2 + obExtra + 12;
+    const ph = rnd() * TAU, wig = rr(3, 6);
+    const circles = [];
+    for (let off = -span; off <= span; off += 3.4){
+      const m = Math.sin(off / 15 + ph) * wig;
+      circles.push({ x: c.x + c.nx * off + c.tx * m, z: c.z + c.nz * off + c.tz * m, r: rr(3.6, 4.6) });
+    }
+    ponds.push({ circles, creek: true });
+  }
   const blobSD = (circles, x, z) => {
     let m = 1e9;
     for (const c of circles){ const d = Math.hypot(x - c.x, z - c.z) - c.r; if (d < m) m = d; }
     return m;
   };
   for (const p of ponds){
-    const c = p.circles[0];
+    const c = p.creek ? p.circles[p.circles.length >> 1] : p.circles[0];
     p.flat = baseH(c.x, c.z);
     p.level = p.flat - 0.45;
     let R = 0;
@@ -366,6 +379,9 @@ export function genHole(seed, par, themeKey, opts = {}){
     else if (kind === 'gorse'){ r = rr(1.2, 2.3); trunk = 0; h = r * 0.55; }
     else if (kind === 'cactus'){ r = 0.42; trunk = rr(2.6, 4.2); h = trunk * 0.5; }
     else if (kind === 'rock'){ r = rr(1.2, 3.2); trunk = 0; h = r * 0.35; }
+    else if (kind === 'maple'){ r = rr(4, 6); trunk = rr(2.2, 3.2); h = trunk + r * 0.75; }
+    else if (kind === 'spruce'){ r = rr(2.8, 4.2); trunk = rr(1.2, 2); h = trunk + r * 1.7; }
+    else if (kind === 'palm'){ r = rr(2.6, 3.6); trunk = rr(6, 9); h = trunk; }
     else { r = rr(2.6, 3.6); trunk = rr(1.4, 2); h = trunk + r * 0.6; }   // palo verde
     if (!okForTree(x, z, kind === 'gorse' || kind === 'rock' ? 0 : r * 0.4)) return;
     trees.push({ x, z, kind, r, h, trunk, rot: rnd() * TAU, tint: rnd(), y: 0 });
@@ -464,7 +480,7 @@ export function gradAt(h, x, z, e = 0.12){
 /* Is the ball sitting under a canopy? Then only a punch is possible. */
 export function underTree(h, x, z){
   for (const t of h.trees){
-    if (t.kind === 'gorse' || t.kind === 'rock' || t.kind === 'cactus') continue;
+    if (t.kind === 'gorse' || t.kind === 'rock' || t.kind === 'cactus' || t.kind === 'palm') continue;
     const d = Math.hypot(x - t.x, z - t.z);
     if (d < t.r * 0.85) return t;
   }

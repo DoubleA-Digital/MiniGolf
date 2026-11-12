@@ -149,7 +149,7 @@ export function simulate(hole, st, opts = {}){
           if (tr.kind === 'cactus') inside = yy < tr.trunk && Math.hypot(dx, dz) < 0.55;
           else if (tr.kind === 'rock' || tr.kind === 'gorse') inside = yy < tr.h * 2 && Math.hypot(dx, dz) < tr.r;
           else {
-            const cy = tr.h, ry = tr.kind === 'pine' ? tr.r * 1.6 : tr.r * 0.9;
+            const cy = tr.h, ry = tr.kind === 'pine' || tr.kind === 'spruce' ? tr.r * 1.6 : tr.kind === 'palm' ? tr.r * 0.5 : tr.r * 0.9;
             const ex = dx / tr.r, ey = (yy - cy) / ry, ez = dz / tr.r;
             inside = ex * ex + ey * ey + ez * ez < 1 || (yy < tr.trunk && Math.hypot(dx, dz) < 0.35);
           }

@@ -113,7 +113,16 @@ const THEME_RIDGES = {
     { salt: 4, r: 4300, h: 150, base: 15, rough: 0.45, col: '#55683f', top: '#768451', snow: 2, haze: 0.22 } ] },
   mesa: { layers: [
     { salt: 5, r: 5600, h: 560, base: 100, rough: 0.9, col: '#a9705a', top: '#c99a80', snow: 2, haze: 0.38, flat: 0.62 },
-    { salt: 6, r: 4300, h: 320, base: 30, rough: 0.7, col: '#94492b', top: '#b8683f', snow: 2, haze: 0.16, flat: 0.55 } ] }
+    { salt: 6, r: 4300, h: 320, base: 30, rough: 0.7, col: '#94492b', top: '#b8683f', snow: 2, haze: 0.16, flat: 0.55 } ] },
+  maple: { layers: [
+    { salt: 7, r: 5600, h: 420, base: 60, rough: 0.7, col: '#6b6f8a', top: '#8c8ea6', snow: 2, haze: 0.42 },
+    { salt: 8, r: 4300, h: 240, base: 25, rough: 0.6, col: '#8a4a26', top: '#c9772e', snow: 2, haze: 0.18 } ] },
+  cay: { layers: [
+    { salt: 9, r: 5600, h: 220, base: -10, rough: 0.9, col: '#5d8f8a', top: '#7aa79a', snow: 2, haze: 0.5 },
+    { salt: 10, r: 4300, h: 90, base: -20, rough: 0.5, col: '#2f7a46', top: '#4f9a52', snow: 2, haze: 0.25 } ] },
+  frost: { layers: [
+    { salt: 11, r: 5600, h: 1500, base: 200, rough: 1.25, col: '#6d7f99', top: '#8e9cb2', snow: 0.55, haze: 0.35 },
+    { salt: 12, r: 4300, h: 700, base: 60, rough: 1, col: '#3d5a52', top: '#5f746c', snow: 0.62, haze: 0.15 } ] }
 };
 
 // a closed band of mountains around the course: vertex-coloured, hazier at the foot
@@ -403,9 +412,9 @@ export class World {
     this.disposeHole();
     this.h = h;
     this.seaMesh = null;
-    // links holes run beside the sea, off one side and square to the line of the hole
+    // links and island holes run beside the sea, off one side and square to the line of the hole
     this.seaDir = null;
-    if (h.theme === 'links'){
+    if (h.T.sea){
       const dx = h.greenC.x - h.tee.x, dz = h.greenC.z - h.tee.z, L = Math.hypot(dx, dz) || 1;
       const side = mulberry32(h.seed + 4243)() < 0.5 ? -1 : 1;
       this.seaDir = { x: -dz / L * side, z: dx / L * side };
@@ -535,7 +544,7 @@ export class World {
     this.buildFlag(h);
     this.buildMarkers(h);
     this.clouds.position.set((b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2);
-    this.clouds.children.forEach(c => c.material.color.set(h.theme === 'mesa' ? '#fff3e6' : '#ffffff'));
+    this.clouds.children.forEach(c => c.material.color.set(h.T.cloud || '#ffffff'));
 
     /* ---- trees ---- */
     this.buildTrees(h.trees, this.holeGroup, T, 1, true);
@@ -596,7 +605,7 @@ export class World {
     pole.position.y = 2.33 / 2;
     const fg = new THREE.PlaneGeometry(0.62, 0.42, 14, 4);
     fg.translate(0.31, 0, 0);
-    const flagColor = h.theme === 'links' ? '#e63b2e' : h.theme === 'mesa' ? '#ffffff' : '#ffd21f';
+    const flagColor = h.T.flag || '#ffd21f';
     const fm = new THREE.MeshLambertMaterial({ color: flagColor, side: THREE.DoubleSide,
       emissive: new THREE.Color(flagColor), emissiveIntensity: 0.45 });
     const flag = new THREE.Mesh(fg, fm);
@@ -629,7 +638,7 @@ export class World {
   }
 
   buildMarkers(h){
-    const col = h.theme === 'links' ? '#2c5fd6' : h.theme === 'mesa' ? '#d84a2a' : '#1d5c2c';
+    const col = h.T.marker || '#1d5c2c';
     const mm = new THREE.MeshStandardMaterial({ color: col, roughness: 0.5 });
     const geo = new THREE.SphereGeometry(0.09, 14, 10);
     const tb = h.teeBox;
@@ -683,11 +692,12 @@ export class World {
     const G = this.treeGeos();
     const parts = {};                 // key -> [{m, color}]
     const add = (key, geo, mat, m, color) => {
+      key += '|' + geo.uuid;          // one InstancedMesh per geometry, or cones and blobs would share a shape
       (parts[key] = parts[key] || { geo, mat, items: [] }).items.push({ m, color });
     };
     const lam = (c, flat) => { const m = new THREE.MeshLambertMaterial({ color: c, flatShading: !!flat }); return m; };
     const mats = this._tm || (this._tm = {
-      trunk: lam('#6b4a32'), birchTrunk: lam('#e8e4da'), leaf: lam('#ffffff', true), cactus: lam('#ffffff', true),
+      trunk: lam('#6b4a32'), birchTrunk: lam('#e8e4da'), palmTrunk: lam('#9a7d5a'), leaf: lam('#ffffff', true), cactus: lam('#ffffff', true),
       rock: lam('#ffffff', true), mesa: lam('#ffffff', true), dune: lam('#ffffff')
     });
     mats.leaf.vertexColors = true; mats.mesa.vertexColors = true;
@@ -730,8 +740,49 @@ export class World {
           add('cactus', G.arm, mats.cactus, comp(t.x + ox * 0.5, t.y + t.trunk * 0.38 * sc, t.z + oz * 0.5, sc * 0.9, 0.5 * sc, sc * 0.9, 0, 0, Math.PI / 2 * (Math.cos(a) > 0 ? 1 : -1)), col);
         }
       } else if (t.kind === 'rock'){
+        const rk = T.rock || [0.05, 0.45, 0.42];
         add('rock', G.rock, mats.rock, comp(t.x, t.y + t.r * 0.15, t.z, t.r * sc, t.r * 0.62 * sc, t.r * 0.85 * sc, t.rot, v, v * 0.5),
-            hsl(0.05 + v * 0.03, 0.45, 0.42 + v * 0.1));
+            hsl(rk[0] + v * 0.03, rk[1], rk[2] + v * 0.1));
+      } else if (t.kind === 'maple'){
+        // fall colour: mostly reds and oranges, some gold, the odd one still green
+        const hue = v < 0.38 ? 0.01 + v * 0.05 : v < 0.72 ? 0.06 + (v - 0.38) * 0.08 : v < 0.92 ? 0.11 + (v - 0.72) * 0.1 : 0.2;
+        const lit = v < 0.38 ? 0.36 : 0.42;
+        add('trunk', G.trunk, mats.trunk, comp(t.x, t.y, t.z, sc, t.trunk * sc + t.r * 0.4, sc));
+        add('leaf', G.blob, mats.leaf, comp(t.x, t.y + t.h * sc, t.z, t.r * sc, t.r * 0.86 * sc, t.r * sc, t.rot),
+            hsl(hue, 0.72, lit));
+        add('leaf', G.blob, mats.leaf, comp(t.x - t.r * 0.35 * sc, t.y + (t.h + t.r * 0.4) * sc, t.z + t.r * 0.25 * sc,
+            t.r * 0.6 * sc, t.r * 0.55 * sc, t.r * 0.6 * sc, t.rot), hsl(hue + 0.015, 0.75, lit + 0.06));
+      } else if (t.kind === 'spruce'){
+        // dark tiers, each carrying a skirt of snow
+        add('trunk', G.trunk, mats.trunk, comp(t.x, t.y, t.z, sc * 0.8, (t.trunk + t.r) * sc, sc * 0.8));
+        const dark = hsl(0.42 + v * 0.03, 0.35, 0.16 + v * 0.05), snow = hsl(0.58, 0.25, 0.9 + v * 0.05);
+        const tiers = [[0, 1, 1.3], [0.95, 0.74, 1.05], [1.75, 0.48, 0.85]];
+        for (const [up, w, ht] of tiers){
+          const y0 = t.y + (t.trunk + up * t.r) * sc;
+          add('leaf', G.cone, mats.leaf, comp(t.x, y0 + ht * t.r * 0.5 * sc, t.z, t.r * w * sc, ht * t.r * sc, t.r * w * sc, t.rot), dark);
+          add('leaf', G.cone, mats.leaf, comp(t.x, y0 + ht * t.r * 0.62 * sc, t.z, t.r * w * 0.78 * sc, ht * t.r * 0.42 * sc, t.r * w * 0.78 * sc, t.rot + 0.4), snow);
+        }
+      } else if (t.kind === 'palm'){
+        // a curved trunk leaning away from the crown's base, then drooping fronds
+        const segs = 4, lean = 0.12 + v * 0.3, seg = t.trunk * sc / segs;
+        const dx = Math.cos(t.rot), dz = -Math.sin(t.rot);
+        let reach = 0;
+        for (let k = 0; k < segs; k++) reach += Math.sin(lean * (k + 0.5) / segs * 1.6) * seg;
+        let px = t.x - dx * reach, py = t.y, pz = t.z - dz * reach;
+        for (let k = 0; k < segs; k++){
+          const a = lean * (k + 0.5) / segs * 1.6;
+          add('trunk', G.trunk, mats.palmTrunk, comp(px, py, pz, sc * (0.95 - k * 0.12), seg * 1.08, sc * (0.95 - k * 0.12), t.rot, 0, -a));
+          px += dx * Math.sin(a) * seg; py += Math.cos(a) * seg; pz += dz * Math.sin(a) * seg;
+        }
+        const col = hsl(0.27 + v * 0.04, 0.55, 0.28 + v * 0.06);
+        const n = 7;
+        for (let k = 0; k < n; k++){
+          const yaw = t.rot + k / n * Math.PI * 2 + v, droop = 0.25 + ((k * 0.37 + v) % 1) * 0.35;
+          const L = t.r * sc;
+          const fx = Math.cos(yaw) * Math.cos(droop) * L * 0.5, fy = -Math.sin(droop) * L * 0.5, fz = -Math.sin(yaw) * Math.cos(droop) * L * 0.5;
+          add('leaf', G.blob0, mats.leaf, comp(px + fx, py + fy + 0.15, pz + fz, L * 0.55, 0.1 * sc, L * 0.2, yaw, 0, -droop), col);
+        }
+        add('leaf', G.blob0, mats.leaf, comp(px, py + 0.1, pz, 0.45 * sc, 0.35 * sc, 0.45 * sc), hsl(0.1, 0.4, 0.3));
       } else if (t.kind === 'mesa'){
         add('mesa', G.mesa, mats.mesa, comp(t.x, t.y, t.z, t.r, t.h, t.r * (0.8 + v * 0.4), t.rot),
             hsl(0.04 + v * 0.03, 0.5, 0.45 + v * 0.1));
@@ -774,6 +825,7 @@ export class World {
       const k = 1 / Math.max(Math.abs(ex) / hw, Math.abs(ez) / hd);
       return { x: cx + ex * (k + d), z: cz + ez * (k + d) };
     };
+    const inside = p => p.x > b.minX && p.x < b.maxX && p.z > b.minZ && p.z < b.maxZ;
     const hAt = (x, z) => h.heightAt(Math.max(b.minX, Math.min(b.maxX, x)), Math.max(b.minZ, Math.min(b.maxZ, z))) - 6;
     // links: the sea lies off one side of the hole, square to its line
     const sea = this.seaDir;
@@ -798,6 +850,38 @@ export class World {
         const p = ringPoint(-10, 200);
         if (!offSea(p)) continue;
         list.push({ x: p.x, z: p.z, y: hAt(p.x, p.z) + 5.5, kind: 'gorse', r: 1.5 + rnd() * 2, h: 1, rot: rnd() * 6, tint: rnd() });
+      }
+    } else if (h.theme === 'maple'){
+      for (let i = 0; i < 480; i++){
+        const p = ringPoint(-12, 420);
+        const kind = rnd() < 0.72 ? 'maple' : 'pine';
+        const r = kind === 'pine' ? 3.5 + rnd() * 2.5 : 4.5 + rnd() * 3;
+        const trunk = kind === 'pine' ? 2 + rnd() : 2.6 + rnd();
+        list.push({ x: p.x, z: p.z, y: inside(p) ? h.heightAt(p.x, p.z) : hAt(p.x, p.z),
+                    kind, r, trunk, h: kind === 'pine' ? trunk + r * 1.5 : trunk + r * 0.75, rot: rnd() * 6, tint: rnd(),
+                    scale: 1 + rnd() * 0.5 });
+      }
+    } else if (h.theme === 'cay'){
+      for (let i = 0; i < 70; i++){
+        const p = ringPoint(30, 600);
+        if (!offSea(p)) continue;
+        list.push({ x: p.x, z: p.z, y: hAt(p.x, p.z), kind: 'dune', r: 25 + rnd() * 50, h: 4 + rnd() * 9, rot: rnd() * 6, tint: rnd() });
+      }
+      for (let i = 0; i < 240; i++){
+        const p = ringPoint(-10, 260);
+        if (!offSea(p)) continue;
+        const palm = rnd() < 0.75;
+        list.push({ x: p.x, z: p.z, y: inside(p) ? h.heightAt(p.x, p.z) : hAt(p.x, p.z), kind: palm ? 'palm' : 'rock',
+                    r: palm ? 2.8 + rnd() : 1.5 + rnd() * 2, trunk: 6 + rnd() * 4, h: 1, rot: rnd() * 6, tint: rnd(), scale: 1 + rnd() * 0.3 });
+      }
+    } else if (h.theme === 'frost'){
+      for (let i = 0; i < 420; i++){
+        const p = ringPoint(-12, 420);
+        const kind = rnd() < 0.85 ? 'spruce' : 'rock';
+        const r = kind === 'rock' ? 2 + rnd() * 5 : 3 + rnd() * 2;
+        const trunk = 1.2 + rnd();
+        list.push({ x: p.x, z: p.z, y: inside(p) ? h.heightAt(p.x, p.z) : hAt(p.x, p.z),
+                    kind, r, trunk, h: trunk + r * 1.7, rot: rnd() * 6, tint: rnd(), scale: 1 + rnd() * 0.6 });
       }
     } else {
       for (let i = 0; i < 22; i++){
@@ -825,7 +909,7 @@ export class World {
     const lvl = Math.min(h.heightAt(b.minX, b.minZ), h.heightAt(b.maxX, b.maxZ), h.heightAt(b.minX, b.maxZ), h.heightAt(b.maxX, b.minZ)) - 1.2;
     const nm = this.waterNormal().clone();
     nm.repeat.set(160, 160); nm.userData.shared = false;
-    const m = new THREE.MeshPhongMaterial({ color: '#3f7486', specular: 0xffffff, shininess: 90, normalMap: nm,
+    const m = new THREE.MeshPhongMaterial({ color: h.T.seaColor || '#3f7486', specular: 0xffffff, shininess: 90, normalMap: nm,
                                             normalScale: new THREE.Vector2(0.5, 0.5) });
     const g = new THREE.PlaneGeometry(9000, 9000);
     g.rotateX(-Math.PI / 2);

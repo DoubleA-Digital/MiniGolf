@@ -592,6 +592,7 @@ function launchShot(sim, kind, info){
   const bp = { x: p.ball.x, y: h.heightAt(p.ball.x, p.ball.z), z: p.ball.z };
   if (kind !== 'putt'){
     if (p.lie === 'bunker'){ world.burst(bp, 70, h.T.sand, { up: 5, speed: 2.5, life: 1.1, size: 4, dir, push: 2.5 }); sfx.sand(); }
+    else if (p.lie === 'deep' && h.T.snow) world.burst(bp, 60, '#ffffff', { up: 4.5, speed: 2.5, life: 1.1, size: 4, dir, push: 2.5 });
     else if (p.lie === 'fairway' || p.lie === 'rough' || p.lie === 'deep' || p.lie === 'fringe')
       world.burst(bp, p.lie === 'fairway' ? 26 : 40, p.lie === 'fairway' ? '#5d4630' : h.T.rough, { up: 4, speed: 2, life: 0.8, size: 4, dir, push: 3 });
     else if (p.lie === 'waste') world.burst(bp, 40, h.T.waste || '#cfa' , { up: 3.5, speed: 2.5, life: 0.9, size: 4, dir, push: 2 });
@@ -625,7 +626,7 @@ function stepShot(dt){
     const e = sim.events[sh.ev++];
     if (e.type === 'bounce'){
       if (e.speed > 1.2) sfx.land(e.surf, e.speed);
-      const c = e.surf === 'bunker' ? h.T.sand : e.surf === 'waste' ? (h.T.waste || '#d3a676') :
+      const c = e.surf === 'bunker' ? h.T.sand : e.surf === 'waste' ? (h.T.waste || '#d3a676') : e.surf === 'deep' && h.T.snow ? '#ffffff' :
                 e.surf === 'green' ? h.T.green : e.surf === 'fairway' ? h.T.fairway : h.T.rough;
       if (e.speed > 3) world.burst(e, e.surf === 'bunker' ? 40 : 12, c, { up: 2 + e.speed * 0.08, speed: 1.2, life: 0.7, size: 3.5 });
     } else if (e.type === 'tree'){
@@ -1247,7 +1248,8 @@ function refreshHUD(){
     $('siPlays').textContent = `Plays ${Math.round(pl)}y`;
   }
   const lie = LIES[p.lie] || LIES.rough;
-  $('siLie').innerHTML = `<span class="lie-dot" style="background:${LIE_COLORS[p.lie] || '#fff'}"></span>${p.under ? 'Trees' : lie.name}`;
+  const lc = (h.T.lieColors || {})[p.lie] || LIE_COLORS[p.lie] || '#fff';
+  $('siLie').innerHTML = `<span class="lie-dot" style="background:${lc}"></span>${p.under ? 'Trees' : (h.T.lieNames || {})[p.lie] || lie.name}`;
   $('siLiePct').textContent = p.under ? 'Punch only' : lie.pct;
   $('siElev').textContent = Math.abs(elev) < 0.6 ? 'Level' : `${elev > 0 ? '▲' : '▼'} ${Math.abs(elev).toFixed(0)}y`;
 
@@ -1584,7 +1586,7 @@ function toast(t, sub){
   toastT = setTimeout(() => $('toast').classList.remove('on'), 2000);
 }
 function shotCard(sh, sim, tag, tagClass, dPin){
-  const lieName = (LIES[me().lie] || {}).name || '';
+  const lieName = (S.h.T.lieNames || {})[me().lie] || (LIES[me().lie] || {}).name || '';
   const stats = sh.kind === 'putt'
     ? [[`${Math.round(sim.total * YD_FT)}`, 'FT ROLLED'], [`${dPin * YD_FT < 10 ? (dPin * YD_FT).toFixed(1) : Math.round(dPin * YD_FT)}`, 'FT LEFT']]
     : [...(sh.kind === 'full' ? [[`${Math.round(sh.info.speed / MPH)}`, 'BALL MPH']] : []),
@@ -1918,7 +1920,23 @@ const COURSE_ART = {
     <rect width="120" height="64" fill="url(#gc)"/><path d="M8 40 V26 h22 l4 14z M78 40 V22 h26 l6 18z" fill="#b8613f"/><rect y="40" width="120" height="24" fill="#d3a676"/>
     <path d="M10 64 Q40 46 70 50 T120 52 V64Z" fill="#6bb44c"/><ellipse cx="78" cy="51" rx="10" ry="2.6" fill="#75cb5a"/>
     <path d="M24 46 v-9 M24 41 h-3 v-3 M24 43 h3 v-4" stroke="#3f6b35" stroke-width="2" fill="none" stroke-linecap="round"/>
-    <path d="M80 51 V38" stroke="#fff" stroke-width="1"/><path d="M80 38 l6 2 -6 2z" fill="#fff"/></svg>`
+    <path d="M80 51 V38" stroke="#fff" stroke-width="1"/><path d="M80 38 l6 2 -6 2z" fill="#fff"/></svg>`,
+  maple: `<svg viewBox="0 0 120 64" preserveAspectRatio="none"><defs><linearGradient id="gd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f97da"/><stop offset="1" stop-color="#e3eef5"/></linearGradient></defs>
+    <rect width="120" height="64" fill="url(#gd)"/><path d="M0 36 Q30 24 60 32 T120 28 V64 H0Z" fill="#b8642a"/><path d="M0 48 Q40 38 70 45 T120 42 V64 H0Z" fill="#63a641"/>
+    <circle cx="14" cy="34" r="8" fill="#d6452a"/><circle cx="26" cy="36" r="6" fill="#e8902e"/><circle cx="100" cy="30" r="9" fill="#e0a83a"/><circle cx="111" cy="34" r="6" fill="#c5381f"/>
+    <path d="M0 55 Q30 50 60 56 T120 54" stroke="#4f8ea3" stroke-width="3" fill="none"/><ellipse cx="66" cy="46" rx="11" ry="2.8" fill="#78cc5b"/>
+    <path d="M68 46 V33" stroke="#fff" stroke-width="1"/><path d="M68 33 l6 2 -6 2z" fill="#e8562a"/></svg>`,
+  cay: `<svg viewBox="0 0 120 64" preserveAspectRatio="none"><defs><linearGradient id="ge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f9be0"/><stop offset="1" stop-color="#d8f1f7"/></linearGradient></defs>
+    <rect width="120" height="64" fill="url(#ge)"/><rect y="36" width="120" height="28" fill="#1f8fa6"/><path d="M0 44 Q30 38 64 42 T120 40 V64 H0Z" fill="#e9dfbf"/>
+    <path d="M0 52 Q40 46 76 51 T120 50 V64 H0Z" fill="#5cb84a"/><ellipse cx="72" cy="52" rx="10" ry="2.6" fill="#79d662"/>
+    <path d="M20 46 Q22 36 18 26" stroke="#9a7d5a" stroke-width="2" fill="none"/><path d="M18 26 q-8 -2 -12 4 M18 26 q8 -3 12 3 M18 26 q-3 -6 -9 -6 M18 26 q4 -6 10 -5" stroke="#3f8a3a" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M74 52 V39" stroke="#fff" stroke-width="1"/><path d="M74 39 l6 2 -6 2z" fill="#ff4f8b"/></svg>`,
+  frost: `<svg viewBox="0 0 120 64" preserveAspectRatio="none"><defs><linearGradient id="gf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a8fc4"/><stop offset="1" stop-color="#e6eef5"/></linearGradient></defs>
+    <rect width="120" height="64" fill="url(#gf)"/><path d="M0 40 L22 10 L36 26 L54 6 L78 34 L96 16 L120 38 V64 H0Z" fill="#7d8ea6"/>
+    <path d="M17 17 L22 10 L27 16 L24 15 L21 18Z M49 12 L54 6 L60 13 L56 12 L53 15Z M92 21 L96 16 L101 21 L98 20Z" fill="#f4f7fa"/>
+    <path d="M0 46 Q40 38 80 44 T120 42 V64 H0Z" fill="#eef3f7"/><path d="M14 64 Q44 48 74 52 T120 54 V64Z" fill="#5c9e48"/>
+    <path d="M10 46 l5-13 5 13z M100 44 l5-14 5 14z" fill="#24443a"/><ellipse cx="78" cy="54" rx="10" ry="2.6" fill="#73c260"/>
+    <path d="M80 54 V41" stroke="#fff" stroke-width="1"/><path d="M80 41 l6 2 -6 2z" fill="#1e6fff"/></svg>`
 };
 function paintMenu(){
   const bests = loadBests();

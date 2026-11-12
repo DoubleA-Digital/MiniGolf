@@ -90,7 +90,8 @@ export const DIFFICULTY = {
              desc:'Fast meter, no aids, stronger wind' }
 };
 
-// Three courses with their own look and character.
+// Six courses with their own look and character. New ones go on the end:
+// the menu's preview-hole seed comes from each course's position.
 export const THEMES = {
   pines: {
     name:'Whispering Pines', tag:'PARKLAND', desc:'Tree-lined, lush and fair. Water guards a few greens.',
@@ -112,7 +113,7 @@ export const THEMES = {
     tee:'#80b051', waste:null,
     fairW:[21, 28], rough1:[10, 15], deepW:[30, 42], amp:2.4, bump:0.9, elev:[-4, 4],
     trees:0.18, treeKinds:['gorse', 'gorse', 'gorse'], waterChance:0.12, bunkerMul:1.6,
-    potBunkers:true, wind:[6, 20]
+    potBunkers:true, wind:[6, 20], sea:true, flag:'#e63b2e', marker:'#2c5fd6'
   },
   mesa: {
     name:'Red Mesa', tag:'DESERT', desc:'Target golf. Miss the grass and you are in the waste.',
@@ -123,7 +124,43 @@ export const THEMES = {
     tee:'#5ea946', waste:'#d3a676',
     fairW:[15, 19], rough1:[5, 8], deepW:[28, 40], amp:5.5, bump:0.5, elev:[-10, 10],
     trees:0.5, treeKinds:['cactus', 'cactus', 'rock', 'palo'], waterChance:0.18, bunkerMul:0.7,
-    potBunkers:false, wind:[3, 15]
+    potBunkers:false, wind:[3, 15], flag:'#ffffff', marker:'#d84a2a', cloud:'#fff3e6'
+  },
+  maple: {
+    name:'Maple Hollow', tag:'AUTUMN', desc:'Rolling hills in peak fall colour. Creeks cut across the fairways.',
+    sky:['#4f97da', '#e3eef5'], fog:'#e2e4dc', sun:[0.5, 0.55, 0.45], sunColor:'#ffe6c2', sunI:2.2,
+    hemi:['#f3e6d0', '#5a5a2e', 1.05],
+    fairway:'#63a641', fairway2:'#6fb24a', green:'#6cc24f', green2:'#78cc5b', fringe:'#5fae45',
+    rough:'#5b8a33', deep:'#6c8435', outer:'#627a30', sand:'#e8d4a0', water:'#3b6878', waterTop:'#4f8ea3',
+    tee:'#62ab45', waste:null,
+    fairW:[16, 21], rough1:[12, 18], deepW:[18, 26], amp:4.5, bump:0.55, elev:[-9, 9],
+    trees:0.9, treeKinds:['maple', 'maple', 'maple', 'pine', 'birch'], waterChance:0.22, bunkerMul:0.9,
+    potBunkers:false, wind:[0, 10], creek:0.6, leaves:true,
+    flag:'#e8562a', marker:'#8a2e1c', cloud:'#fff8ee'
+  },
+  cay: {
+    name:'Coral Cay', tag:'TROPICAL', desc:'An island course on the open ocean. Palms, white sand and trade winds.',
+    sky:['#2f9be0', '#d8f1f7'], fog:'#cfeaf0', sun:[-0.3, 0.8, 0.35], sunColor:'#fffbe8', sunI:2.6,
+    hemi:['#dff6ff', '#5f8a4a', 1.1],
+    fairway:'#5cb84a', fairway2:'#68c454', green:'#6ccc55', green2:'#79d662', fringe:'#5fbd4c',
+    rough:'#4e9a3c', deep:'#4e9a3c', outer:'#e2d6b0', sand:'#f6efd9', water:'#1d8fa3', waterTop:'#34c0cc',
+    tee:'#62bb4f', waste:'#e9dfbf',
+    fairW:[17, 23], rough1:[7, 11], deepW:[24, 34], amp:2.2, bump:0.6, elev:[-3, 3],
+    trees:0.55, treeKinds:['palm', 'palm', 'palm', 'rock'], waterChance:0.7, bunkerMul:1.25,
+    potBunkers:false, wind:[7, 20], sea:true, seaColor:'#1f8fa6',
+    flag:'#ff4f8b', marker:'#ff8a3d', rock:[0.1, 0.25, 0.75]
+  },
+  frost: {
+    name:'Glacier Peaks', tag:'ALPINE', desc:'Huge elevation in the high mountains. Miss the short grass and you are in the snow.',
+    sky:['#5a8fc4', '#e6eef5'], fog:'#dfe7ee', sun:[0.35, 0.6, -0.5], sunColor:'#f4f8ff', sunI:2.2,
+    hemi:['#e8f2ff', '#6a7a80', 1.2],
+    fairway:'#5c9e48', fairway2:'#67a951', green:'#68b856', green2:'#73c260', fringe:'#5aa548',
+    rough:'#4f8040', deep:'#e8eff4', outer:'#f2f6f9', sand:'#d9ccad', water:'#3d7f98', waterTop:'#7fb8cc',
+    tee:'#5ea54b', waste:null,
+    fairW:[15, 20], rough1:[8, 12], deepW:[22, 32], amp:6, bump:0.45, elev:[-15, 15],
+    trees:0.75, treeKinds:['spruce', 'spruce', 'spruce', 'rock'], waterChance:0.3, bunkerMul:0.6,
+    potBunkers:false, wind:[4, 16], snow:true, lieNames:{ deep:'Snow' }, lieColors:{ deep:'#eef4f8' },
+    flag:'#1e6fff', marker:'#1e6fff', rock:[0.58, 0.06, 0.5], shadow:'rgba(70,90,130,0.36)'
   }
 };
 

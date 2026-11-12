@@ -11,7 +11,10 @@ export const THEME_GRASS = {
   pines: { rough: { p: 0.8, h: 0.24, col: 'rough', k: 1.6 }, deep: { p: 1, h: 0.36, col: 'deep', k: 1.75 } },
   links: { rough: { p: 0.75, h: 0.26, col: 'rough', k: 1.45 }, deep: { p: 1, h: 0.5, col: '#c9b86a', k: 1.15 } },
   mesa:  { rough: { p: 0.7, h: 0.22, col: 'rough', k: 1.45 }, deep: { p: 0.5, h: 0.32, col: '#b9a060', k: 1.15 },
-           waste: { p: 0.05, h: 0.3, col: '#a99055', k: 1.1 } }
+           waste: { p: 0.05, h: 0.3, col: '#a99055', k: 1.1 } },
+  maple: { rough: { p: 0.75, h: 0.24, col: 'rough', k: 1.5 }, deep: { p: 0.9, h: 0.38, col: '#a08a3a', k: 1.2 } },
+  cay:   { rough: { p: 0.7, h: 0.24, col: 'rough', k: 1.5 }, waste: { p: 0.08, h: 0.45, col: '#8f9a55', k: 1.15 } },
+  frost: { rough: { p: 0.8, h: 0.22, col: 'rough', k: 1.5 } }
 };
 
 // where grass tufts grow: [x, z, height, spec index, tint] per tuft
