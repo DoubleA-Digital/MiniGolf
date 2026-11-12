@@ -58,13 +58,20 @@
     return new Promise((resolve, reject) => {
       const ch = sb().channel(name, { config: { broadcast: { self: false }, presence: { key: me.key } } });
       let done = false;
+      // never leave anyone stuck on "Connecting…"
+      const guard = setTimeout(() => {
+        if (done) return;
+        done = true;
+        try{ sb().removeChannel(ch); }catch(e){}
+        reject({ type: 'network' });
+      }, 10000);
       ch.subscribe(async status => {
         if (status === 'SUBSCRIBED' && !done){
-          done = true;
+          done = true; clearTimeout(guard);
           try{ await ch.track(me.meta); }catch(e){}
           resolve(ch);
         } else if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !done){
-          done = true;
+          done = true; clearTimeout(guard);
           try{ sb().removeChannel(ch); }catch(e){}
           reject({ type: 'network' });
         }
