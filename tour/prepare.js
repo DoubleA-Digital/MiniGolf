@@ -23,9 +23,9 @@ function grassPoints(h, quality){
   const specs = Object.entries(THEME_GRASS[h.theme] || THEME_GRASS.pines);
   const rnd = mulberry32(h.seed + 777), b = h.bounds;
   const area = (b.maxX - b.minX) * (b.maxZ - b.minZ);
-  const tries = Math.min(48000, area * 0.6);
+  const tries = Math.min(80000, area * 0.95);
   const out = [];
-  for (let i = 0; i < tries && out.length < 20000 * 5; i++){
+  for (let i = 0; i < tries && out.length < 26000 * 5; i++){
     const x = b.minX + rnd() * (b.maxX - b.minX), z = b.minZ + rnd() * (b.maxZ - b.minZ);
     const surf = h.surfaceAt(x, z);
     const si = specs.findIndex(([k]) => k === surf);

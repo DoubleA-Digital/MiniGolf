@@ -88,7 +88,11 @@ export function paintPixels(h, region, ppy, opts = {}){
       // fallen leaves in the long grass
       if (T.leaves && (surf === 'rough' || surf === 'deep')){
         const lf = hash(i * 3 + 1, j * 5 + 2);
-        if (lf > (surf === 'deep' ? 0.9 : 0.955)){ base = LEAF[Math.floor(hash(i, j) * LEAF.length)]; k = 0.85 + lf * 0.2; }
+        if (lf > (surf === 'deep' ? 0.91 : 0.965)){
+          const L = LEAF[Math.floor(hash(i, j) * LEAF.length)], w = surf === 'deep' ? 0.75 : 0.55;
+          base = [base[0] + (L[0] - base[0]) * w, base[1] + (L[1] - base[1]) * w, base[2] + (L[2] - base[2]) * w];
+          k = 0.9 + lf * 0.12;
+        }
       }
       px[o] = clamp(base[0] * k, 0, 255);
       px[o + 1] = clamp(base[1] * k, 0, 255);
