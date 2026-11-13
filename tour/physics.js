@@ -168,8 +168,15 @@ export function simulate(hole, st, opts = {}){
       }
 
       const gh = hole.heightAt(st.p.x, st.p.z);
-      if (st.p.y <= gh + BALL_R && st.v.y < 0){
+      // contact is judged against the slope, not just "falling": a low ball still rising
+      // into a steeper bank hits it instead of flying on underground
+      let into = st.p.y <= gh + BALL_R;
+      if (into){
         st.p.y = gh + BALL_R;
+        const g = gradAt(hole, st.p.x, st.p.z);
+        into = st.v.y - g.x * st.v.x - g.z * st.v.z < 0;   // velocity against the surface normal
+      }
+      if (into){
         const surf = hole.surfaceAt(st.p.x, st.p.z, gh);
         if (!carryPt){ carryPt = { x: st.p.x, y: st.p.y, z: st.p.z, t }; }
         if (opts.airOnly){ rec(); break; }

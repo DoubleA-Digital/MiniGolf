@@ -320,9 +320,10 @@ export class World {
 
     this.buildBall();
     this.buildTracer();
-    this.dots = new Dots(400);                       // previews
-    // lines lying on the ground (putt read, rollout) skip the depth test so terrain and grass can never hide them
-    this.groundDots = new Dots(400, { depthTest: false, order: 6 });
+    // aiming aids skip the depth test: a raised green's bank or a crest in the fairway
+    // would otherwise swallow the end of the arc, and terrain or grass would bury a ground line
+    this.dots = new Dots(400, { depthTest: false });                 // shot arcs
+    this.groundDots = new Dots(400, { depthTest: false, order: 6 }); // putt read, rollout
     this.flow = new Dots(420);                       // green-reading flow
     this.parts = new Dots(900, { order: 6 });       // particles
     this.scene.add(this.dots.obj, this.groundDots.obj, this.flow.obj, this.parts.obj);
@@ -1203,7 +1204,7 @@ export class World {
     g.setIndex(idx);
     this.tgSegs = segs;
     this.target = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9,
-      depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      depthWrite: false, depthTest: false, side: THREE.DoubleSide, fog: false }));
     this.target.frustumCulled = false;
     this.target.renderOrder = 6;
     this.target.visible = false;

@@ -225,6 +225,28 @@ export function genHole(seed, par, themeKey, opts = {}){
     for (const c of circles){ const d = Math.hypot(x - c.x, z - c.z) - c.r; if (d < m) m = d; }
     return m;
   };
+  // A blob's extra circles can wander onto the green, digging a bunker bowl or a pond's
+  // dish into the putting surface (it still reads as green, so putts roll into a hollow).
+  // Trim every circle back to `margin` yards outside the green; ones too small to keep go.
+  const clearOfGreen = (circles, margin) => {
+    for (let pass = 0; pass < 3; pass++){
+      for (let i = circles.length - 1; i >= 0; i--){
+        const c = circles[i];
+        let near = 1e9;
+        for (let a = 0; a < TAU; a += TAU / 32) near = Math.min(near, greenSD(c.x + Math.cos(a) * c.r, c.z + Math.sin(a) * c.r));
+        if (near < margin) c.r -= margin - near;
+        if (c.r < 1.2 || greenSD(c.x, c.z) < margin + 1.2) circles.splice(i, 1);
+      }
+    }
+  };
+  for (let i = bunkers.length - 1; i >= 0; i--){
+    clearOfGreen(bunkers[i].circles, 2);
+    if (!bunkers[i].circles.length) bunkers.splice(i, 1);
+  }
+  for (let i = ponds.length - 1; i >= 0; i--){
+    clearOfGreen(ponds[i].circles, 3);
+    if (!ponds[i].circles.length) ponds.splice(i, 1);
+  }
   for (const p of ponds){
     const c = p.creek ? p.circles[p.circles.length >> 1] : p.circles[0];
     p.flat = baseH(c.x, c.z);

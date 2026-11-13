@@ -362,10 +362,19 @@ function suggestClub(){
 function suggestPace(){
   const p = me(), h = S.h;
   const d = hdist(p.ball, h.pin);
+  // pace is green distance: grass between the ball and the green slows it, so count
+  // each yard of it as the extra yards of green it costs
+  let eq = 0;
+  const n = Math.max(1, Math.ceil(d / 0.25));
+  for (let i = 0; i < n; i++){
+    const k = (i + 0.5) / n;
+    const s = h.surfaceAt(p.ball.x + (h.pin.x - p.ball.x) * k, p.ball.z + (h.pin.z - p.ball.z) * k);
+    eq += d / n * (SURF[s] || SURF.rough).roll / SURF.green.roll;
+  }
   // uphill needs more, downhill less — a rough read, the player still decides
   const rise = h.pin.y - p.ball.y;
   // and a good putt finishes about a foot and a half past if it misses
-  return clamp(d + 0.35 + rise * 7, 0.3, 30);
+  return clamp(eq + 0.35 + rise * 7, 0.3, 30);
 }
 
 function placeGolfer(){
