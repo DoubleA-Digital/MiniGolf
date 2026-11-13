@@ -1761,7 +1761,7 @@ $('minimap').addEventListener('pointerdown', e => {
 });
 
 // the course itself: drag to aim; in putt mode, pull back to stroke
-const drag = { on: false, id: null, x0: 0, y0: 0, x: 0, y: 0, axis: null, aim0: 0, tgt0: 0 };
+const drag = { on: false, id: null, x0: 0, y0: 0, x: 0, y: 0, axis: null, pace0: 0 };
 const gl = $('gl');
 gl.addEventListener('pointerdown', e => {
   unlock();
@@ -1769,11 +1769,20 @@ gl.addEventListener('pointerdown', e => {
   if (S.phase === 'flight' && S.shot && S.shot.kind !== 'putt'){ S.shot.speed = 4; return; }
   if (S.phase !== 'address' || S.meter.phase !== 'idle' || S.hold.on || S.down) return;
   drag.on = true; drag.id = e.pointerId; drag.x0 = drag.x = e.clientX; drag.y0 = drag.y = e.clientY;
-  drag.axis = null; drag.aim0 = S.aimYaw; drag.tgt0 = S.chipTarget; drag.pace0 = S.puttPace;
+  drag.axis = null; drag.pace0 = S.puttPace;
   gl.setPointerCapture(e.pointerId);
 });
+// putt pull-back: pace follows the pull distance from y0
+const PULL_RANGE = () => innerHeight * 0.42;
+// keyboard changed the pace mid-pull: move the pull origin so the next mouse move continues from it
+function rebasePull(){
+  if (!drag.on || drag.axis !== 'y' || S.mode !== 'putt') return;
+  drag.y0 = drag.y - Math.pow(S.puttPace / 30, 1 / 1.75) * PULL_RANGE();
+}
 gl.addEventListener('pointermove', e => {
   if (!drag.on || e.pointerId !== drag.id) return;
+  // aim and chip distance move by the step since the last event, so arrow-key nudges made mid-drag stick
+  const sx = e.clientX - drag.x, sy = e.clientY - drag.y;
   drag.x = e.clientX; drag.y = e.clientY;
   const dx = drag.x - drag.x0, dy = drag.y - drag.y0;
   if (!drag.axis && Math.hypot(dx, dy) > 9) drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
@@ -1781,19 +1790,19 @@ gl.addEventListener('pointermove', e => {
   const fine = e.shiftKey ? 0.25 : 1;
   if (S.mode === 'putt'){
     if (drag.axis === 'x'){
-      S.aimYaw = drag.aim0 + dx * 0.0011 * fine;
+      S.aimYaw += sx * 0.0011 * fine;
     } else {
       // pulling down sets the pace; sideways while pulling fine-tunes the line
-      const k = clamp(dy / (innerHeight * 0.42), 0, 1);
+      const k = clamp(dy / PULL_RANGE(), 0, 1);
       S.puttPace = Math.max(0, 30 * Math.pow(k, 1.75));
-      S.aimYaw = drag.aim0 + dx * 0.0004;
+      S.aimYaw += sx * 0.0004;
       me().golfer.pose(-Math.min(1, Math.sqrt(S.puttPace / 30)), 'putt');
     }
   } else if (S.mode === 'chip' && drag.axis === 'y'){
-    S.chipTarget = clamp(drag.tgt0 - dy * 0.06 * fine, 0.8, SHOTS[S.shotType].maxCarry);
+    S.chipTarget = clamp(S.chipTarget - sy * 0.06 * fine, 0.8, SHOTS[S.shotType].maxCarry);
   } else if (drag.axis === 'x'){
     const sens = S.mode === 'chip' ? 0.0022 : 0.0026;
-    S.aimYaw = drag.aim0 + dx * sens * fine * (S.overview ? 0.6 : 1);
+    S.aimYaw += sx * sens * fine * (S.overview ? 0.6 : 1);
   }
   me().golfer.group.rotation.y = -S.aimYaw;
   S.previewDirty = true;
@@ -1814,7 +1823,7 @@ gl.addEventListener('pointercancel', endDrag);
 gl.addEventListener('wheel', e => {
   if (S.phase !== 'address') return;
   if (S.mode === 'chip'){ S.chipTarget = clamp(S.chipTarget - Math.sign(e.deltaY) * 0.5, 0.8, SHOTS[S.shotType].maxCarry); S.previewDirty = true; refreshHUDLight(); }
-  else if (S.mode === 'putt'){ S.puttPace = clamp(S.puttPace - Math.sign(e.deltaY) / 3, 0, 30); S.previewDirty = true; refreshHUDLight(); }
+  else if (S.mode === 'putt'){ S.puttPace = clamp(S.puttPace - Math.sign(e.deltaY) / 3, 0, 30); S.previewDirty = true; refreshHUDLight(); rebasePull(); }
   else changeClub(Math.sign(e.deltaY));
 }, { passive: true });
 
@@ -1853,8 +1862,8 @@ window.addEventListener('keydown', e => {
     e.preventDefault();
     const d = k === 'ArrowUp' ? -1 : 1;
     if (S.mode === 'full'){ if (!e.repeat) changeClub(d); }
-    else if (S.mode === 'putt'){ S.puttPace = clamp(S.puttPace - d / 3, 0, 30); S.previewDirty = true; refreshHUDLight();
-      me().golfer.pose(-Math.min(1, Math.sqrt(S.puttPace / 30)) * 0.4, 'putt'); }
+    else if (S.mode === 'putt'){ S.puttPace = clamp(S.puttPace - d / 3, 0, 30); S.previewDirty = true; refreshHUDLight(); rebasePull();
+      me().golfer.pose(-Math.min(1, Math.sqrt(S.puttPace / 30)) * (drag.on ? 1 : 0.4), 'putt'); }
     else { S.chipTarget = clamp(S.chipTarget - d * 0.25, 0.8, SHOTS[S.shotType].maxCarry); S.previewDirty = true; refreshHUDLight(); }
     return;
   }
