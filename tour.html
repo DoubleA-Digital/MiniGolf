@@ -383,6 +383,108 @@ table.card td .sc{ display: inline-grid; place-items: center; width: 24px; heigh
 #fade{ position: fixed; inset: 0; z-index: 15; background: #000; opacity: 0; pointer-events: none; transition: opacity .3s; }
 #fade.on{ opacity: 1; }
 
+/* ================= club shop ================= */
+.clubmid .cset{ font-family: var(--cond); font-weight: 800; font-size: 10.5px; letter-spacing: 1.4px; text-transform: uppercase; line-height: 1.2; }
+.btn.shopbtn{ background: rgba(255,207,74,.1); border-color: rgba(255,207,74,.45); margin-top: 0; }
+.btn.shopbtn small i{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.panel.shop{ max-width: 900px; }
+.shophead{ display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+#shopTabs{ margin-bottom: 14px; }
+.cgrid{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.ccard{ position: relative; background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 16px; padding: 12px 12px 12px;
+  cursor: pointer; display: flex; flex-direction: column; gap: 6px; overflow: hidden; transition: transform .15s, border-color .15s; outline: none; }
+.ccard::before{ content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--ac); }
+.ccard:hover, .ccard:focus-visible{ transform: translateY(-2px); border-color: var(--ac); }
+.ccard.locked{ background: rgba(255,255,255,.025); }
+.ccard.locked .cname, .ccard.locked .cdesc2, .ccard.locked .cbars{ opacity: .45; }
+.ctop{ display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 20px; }
+.crar{ font-family: var(--cond); font-weight: 800; font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--rc);
+  background: color-mix(in srgb, var(--rc) 16%, transparent); padding: 2px 7px; border-radius: 999px; }
+.lock{ width: 16px; height: 16px; color: var(--dim); flex: 0 0 auto; }
+.cname{ font-family: var(--cond); font-weight: 900; font-size: 19px; line-height: 1.05; color: #fff; }
+.cdesc2{ font-size: 11.5px; line-height: 1.35; color: var(--dim); min-height: 46px; }
+.cbars{ display: flex; flex-direction: column; gap: 4px; margin: 2px 0; }
+.cbar{ display: grid; grid-template-columns: 28px 1fr 22px; align-items: center; gap: 6px; font-family: var(--cond); font-weight: 800; font-size: 10.5px; }
+.cbar span{ color: var(--dim); letter-spacing: 1px; }
+.cbar i{ height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; display: block; }
+.cbar i b{ display: block; height: 100%; width: 0; border-radius: 3px; transition: width .7s cubic-bezier(.2,.8,.3,1); }
+.cbar em{ font-style: normal; text-align: right; }
+.ceq{ margin-top: auto; border: 1px solid var(--ac); background: transparent; color: #fff; border-radius: 10px; padding: 8px; cursor: pointer;
+  font-family: var(--cond); font-weight: 900; font-size: 13px; letter-spacing: 1.2px; }
+.ceq:hover{ background: color-mix(in srgb, var(--ac) 22%, transparent); }
+.ceq.on{ background: var(--ac); color: #0d1a14; cursor: default; }
+.creq{ margin-top: auto; display: flex; gap: 6px; align-items: flex-start; font-family: var(--cond); font-weight: 800; font-size: 12.5px; line-height: 1.2; }
+.cprog{ position: relative; height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+.cprog i{ position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ac, var(--gold)); opacity: .8; transition: width .7s cubic-bezier(.2,.8,.3,1); }
+.cprog s{ position: absolute; top: 0; bottom: 0; background: #fff; text-decoration: none; animation: rwpulse 1.2s ease-in-out infinite alternate; }
+@keyframes rwpulse{ from{ opacity: .55; } to{ opacity: 1; } }
+.cpt{ font-family: var(--cond); font-weight: 700; font-size: 11px; color: var(--dim); }
+.dback{ border: 0; background: transparent; color: var(--dim); cursor: pointer; padding: 0 0 8px; font-family: var(--cond); font-weight: 800; font-size: 14px; letter-spacing: .5px; }
+.dhead{ border-left: 4px solid var(--ac); padding: 2px 0 2px 12px; }
+.dhead .ctop{ justify-content: flex-start; }
+.dhead h3{ margin: 4px 0 2px; font-family: var(--cond); font-weight: 900; font-size: 30px; line-height: 1; }
+.dhead p{ margin: 0; color: var(--dim); font-size: 14px; }
+.dsum{ margin: 12px 0; padding-left: 18px; font-size: 14px; line-height: 1.5; color: rgba(255,255,255,.88); }
+.dcmp-h{ display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-family: var(--cond); font-weight: 800; font-size: 12px;
+  letter-spacing: 1.4px; text-transform: uppercase; color: var(--dim); margin: 14px 0 8px; }
+.dcmp-h .key{ display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: .3px; }
+.dcmp-h .key i{ width: 12px; height: 6px; border-radius: 3px; }
+.dcmp-h .key u{ width: 2px; height: 12px; background: #fff; margin-left: 8px; }
+.cmp{ display: grid; grid-template-columns: 96px 1fr 30px 38px; align-items: center; gap: 10px; padding: 5px 0; font-family: var(--cond); font-weight: 800; }
+.cmp .cl{ font-size: 14px; }
+.ctrack{ position: relative; height: 10px; border-radius: 5px; background: rgba(255,255,255,.1); }
+.ctrack b{ position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 5px; transition: width .7s cubic-bezier(.2,.8,.3,1); }
+.ctrack u{ position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+.cmp em{ font-style: normal; font-size: 16px; text-align: right; }
+.cmp strong{ font-size: 14px; text-align: right; color: var(--dim); }
+.cmp strong.up{ color: var(--green); }
+.cmp strong.down{ color: var(--red); }
+.dreq{ display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; background: rgba(255,255,255,.05); border-radius: 12px; padding: 12px; }
+.dreq > div{ flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.dreq b{ font-family: var(--cond); font-weight: 900; font-size: 16px; }
+.dreq span{ font-family: var(--cond); font-weight: 700; font-size: 13px; color: var(--dim); }
+.bag{ display: flex; flex-direction: column; gap: 6px; }
+.bslot{ display: grid; grid-template-columns: 1fr 190px; gap: 4px 12px; align-items: center; background: rgba(255,255,255,.05);
+  border-left: 4px solid var(--ac); border-radius: 12px; padding: 9px 12px; }
+.bslot .bn b{ display: block; font-family: var(--cond); font-weight: 900; font-size: 16px; }
+.bslot .bn span{ font-family: var(--cond); font-weight: 700; font-size: 11.5px; color: var(--dim); }
+.bslot select{ background: #0f1c16; color: #fff; border: 1px solid var(--line2); border-radius: 10px; padding: 8px 10px; font: 700 14px var(--cond); outline: none; }
+.bslot select:focus{ border-color: var(--gold); }
+.bst{ grid-column: 1 / -1; display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--cond); font-weight: 700; font-size: 11.5px; color: var(--dim); letter-spacing: .6px; }
+.bst b{ color: #fff; }
+.panel.unlock{ max-width: 400px; text-align: center; position: relative; overflow: hidden; border-color: var(--ac); }
+.panel.unlock h2{ font-size: 38px; color: var(--ac); position: relative; }
+.panel.unlock .sub{ color: var(--gold); letter-spacing: 4px; margin-bottom: 6px; position: relative; }
+.uglow{ position: absolute; inset: -40% -20% auto; height: 260px; background: radial-gradient(closest-side, color-mix(in srgb, var(--ac) 45%, transparent), transparent);
+  animation: uglow 2.4s ease-in-out infinite alternate; pointer-events: none; }
+@keyframes uglow{ from{ opacity: .5; transform: scale(.9); } to{ opacity: 1; transform: scale(1.08); } }
+.udesc{ color: var(--dim); font-size: 14px; margin: 10px 0 12px; position: relative; }
+.panel.unlock .cbars{ text-align: left; position: relative; }
+.reward{ margin-top: 12px; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.rwtop{ display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.rwres{ font-family: var(--cond); font-weight: 900; font-size: 18px; letter-spacing: 1.2px; text-transform: uppercase; padding: 5px 12px; border-radius: 10px; }
+.rwres.w{ background: var(--gold); color: #1c1606; }
+.rwres.l{ background: rgba(255,255,255,.1); }
+.rwstars{ display: flex; gap: 2px; font-size: 24px; line-height: 1; }
+.rwstars i{ font-style: normal; color: rgba(255,255,255,.15); }
+.rwstars i.on{ color: var(--gold); text-shadow: 0 0 12px rgba(255,207,74,.5); }
+.rwn{ text-align: center; }
+.rwn b{ display: block; font-family: var(--cond); font-weight: 900; font-size: 20px; line-height: 1; }
+.rwn span{ font-family: var(--cond); font-weight: 700; font-size: 10px; letter-spacing: 1.3px; color: var(--dim); text-transform: uppercase; }
+.rwh{ font-family: var(--cond); font-weight: 800; font-size: 11.5px; letter-spacing: 1.6px; color: var(--dim); text-transform: uppercase; margin: 12px 0 6px; }
+.rwrow{ display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; align-items: center; padding: 3px 0; font-family: var(--cond); }
+.rwrow b{ font-weight: 900; font-size: 14px; color: var(--ac); }
+.rwrow span{ font-weight: 700; font-size: 12.5px; color: var(--dim); }
+@media (max-width: 760px){
+  .cgrid{ grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .ccard{ padding: 10px; }
+  .cname{ font-size: 16px; }
+  .cdesc2{ font-size: 11px; min-height: 0; }
+  .cmp{ grid-template-columns: 76px 1fr 26px 32px; gap: 7px; }
+  .bslot{ grid-template-columns: 1fr; }
+  .rwrow{ grid-template-columns: 1fr; gap: 3px; }
+}
+
 /* ================= small screens ================= */
 @media (max-width: 760px){
   .mpanel{ padding: calc(18px + var(--safeT)) 18px calc(18px + var(--safeB)); gap: 14px; }
@@ -512,7 +614,7 @@ table.card td .sc{ display: inline-grid; place-items: center; width: 24px; heigh
     </div>
     <div class="clubsel glass" id="clubSel">
       <button class="nav" id="clubPrev" aria-label="Longer club">‹</button>
-      <div class="clubmid"><div class="cn" id="clubName">Driver</div><div class="cd" id="clubCarry">Carry <b>268y</b></div>
+      <div class="clubmid"><div class="cn" id="clubName">Driver</div><div class="cset" id="clubSet"></div><div class="cd" id="clubCarry">Carry <b>268y</b></div>
         <div class="clubstrip" id="clubStrip"></div></div>
       <button class="nav" id="clubNext" aria-label="Shorter club">›</button>
     </div>
@@ -571,6 +673,7 @@ table.card td .sc{ display: inline-grid; place-items: center; width: 24px; heigh
 
     <button class="btn primary" id="bTeeOff">Tee Off</button>
     <button class="btn online" id="bOnline"><b>Play online</b><small>Party of 2–4 · room code</small></button>
+    <button class="btn online shopbtn" id="bShop"><b>Club Shop</b><small id="bShopSub"></small></button>
     <div class="mrow">
       <button class="btn ghost" id="bHelp">How to play</button>
       <button class="btn ghost" id="bBack">Mini Golf</button>
@@ -597,6 +700,7 @@ table.card td .sc{ display: inline-grid; place-items: center; width: 24px; heigh
   <h2 id="cardTitle">Scorecard</h2><div class="sub" id="cardSub"></div>
   <div class="cardwrap"><table class="card" id="cardTable"></table></div>
   <div class="stats" id="cardStats"></div>
+  <div class="reward hidden" id="cardReward"></div>
   <div class="btns" id="cardBtns"></div>
 </div></div>
 

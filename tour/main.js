@@ -11,6 +11,9 @@ import { createGolfer, clubKind } from './golfer.js';
 import { sfx, unlock, setMuted, isMuted, startAmbience, stopAmbience } from './audio.js';
 import { clamp, lerp, smooth } from './noise.js';
 import { net, peerError, MAX_PLAYERS } from './net.js';
+import { SETS, SET_BY_ID, slotOf, clubFx } from './clubsets.js';
+import { clubs, recordRound, progressText, RULES } from './unlocks.js';
+import { initShop, openShop, announceUnlocks, bagName, bagColor } from './shop.js';
 
 const $ = id => document.getElementById(id);
 const YD_FT = 3;
@@ -166,6 +169,17 @@ function cachedSpeed(carry, launchDeg, spin){
   return v;
 }
 
+/* the equipped bag scales every club (stats and tuning in clubsets.js) */
+const fxOf = clubId => { const sl = slotOf(clubId); return clubFx(clubs.bag[sl], sl); };
+// a lie's penalties, softened or sharpened by the club's forgiveness
+function lieFx(lie, F){
+  return { power: 1 - (1 - lie.power) * F.forgive, spin: Math.max(0.1, 1 - (1 - lie.spin) * F.forgive),
+           err: 1 + (lie.err - 1) * F.forgive, launch: lie.launch };
+}
+const clubCarry = i => CLUBS[i].carry * fxOf(CLUBS[i].id).power;
+// calm-air reach of club i from the current lie
+const clubReach = (i, lie) => clubCarry(i) * lieFx(lie, fxOf(CLUBS[i].id)).power;
+
 /* ============================================================
    ROUND FLOW
    ============================================================ */
@@ -198,7 +212,7 @@ function startRound(opts){
       avatarImg: online ? r.avatarImg : i === 0 ? profile.avatarImg : null,
       scores: new Array(S.pars.length).fill(null), putts: new Array(S.pars.length).fill(0),
       strokes: 0, ball: { x: 0, y: 0, z: 0 }, lie: 'tee', under: null, holed: false, prev: null,
-      stats: { fir: 0, firN: 0, gir: 0, longest: 0, birdies: 0 }, girDone: false,
+      stats: { fir: 0, firN: 0, firRun: 0, firBest: 0, gir: 0, longest: 0, birdies: 0 }, girDone: false,
       golfer: g, marker: ob
     };
   });
@@ -332,7 +346,7 @@ function aimDefault(){
   const p = me(), h = S.h;
   if (S.mode === 'putt' || S.mode === 'chip'){ S.aimYaw = yawTo(p.ball, h.pin); return; }
   const lie = LIES[p.lie];
-  const reach = CLUBS[S.club].carry * lie.power + rollGuess(S.club);
+  const reach = clubReach(S.club, lie) + rollGuess(S.club);
   S.aimYaw = yawTo(p.ball, defaultAim(h, p.ball, reach));
 }
 const rollGuess = i => [26, 20, 15, 11, 9, 8, 7, 6, 5, 4, 3, 2, 2, 0][i] || 0;
@@ -352,7 +366,7 @@ function suggestClub(){
   const lie = LIES[p.lie];
   let best = p.lie === 'tee' ? 0 : 1, bestGap = 1e9;
   for (let i = p.lie === 'tee' ? 0 : 1; i < PUTTER; i++){
-    const reach = CLUBS[i].carry * lie.power + rollGuess(i) * 0.6;
+    const reach = clubReach(i, lie) + rollGuess(i) * 0.6;
     const gap = Math.abs(reach - target) + (reach < target ? 0 : 3);
     if (gap < bestGap){ bestGap = gap; best = i; }
   }
@@ -398,14 +412,16 @@ function ballStart(){
 
 // error > 0 slices (starts right, curves right); < 0 hooks
 function buildFull(power, err){
-  const p = me(), club = CLUBS[S.club], lie = LIES[p.lie];
-  let carry = club.carry * power * lie.power * (1 - 0.16 * Math.pow(Math.min(1, Math.abs(err)), 1.3));
+  const p = me(), club = CLUBS[S.club], F = fxOf(club.id), lie = lieFx(LIES[p.lie], F);
+  // power stretches the carry; forgiveness softens what a mishit costs in distance
+  let carry = club.carry * F.power * power * lie.power * (1 - 0.16 * F.forgive * Math.pow(Math.min(1, Math.abs(err)), 1.3));
   let launchDeg = club.launch + lie.launch - S.strike.v * 3.2;
-  let spin = club.spin * lie.spin * (1 - 0.32 * S.strike.v);
+  let spin = club.spin * F.spin * lie.spin * (1 - 0.32 * S.strike.v);
   if (p.under){ carry *= 0.72; launchDeg = Math.min(launchDeg, 6.5); spin *= 0.5; }
   const speed = cachedSpeed(Math.max(1, carry), launchDeg, spin);
   const yaw = S.aimYaw - S.strike.u * 0.026 + err * 0.034;
-  const tilt = S.strike.u * -0.1 * (club.err + 0.2) - err * 0.17;
+  // control takes the bend out of a miss (a shaped draw or fade is the player's, and stays)
+  const tilt = S.strike.u * -0.1 * (club.err + 0.2) - err * 0.17 * F.control;
   return launch(ballStart(), yaw, speed, launchDeg, spin, tilt);
 }
 
@@ -427,14 +443,15 @@ function chipSpeed(carry, launchDeg, spin){
   return v;
 }
 function chipParams(){
-  const p = me(), sh = SHOTS[S.shotType], lie = LIES[p.lie];
-  let launchDeg = sh.launch, spin = sh.spin;
-  if (p.lie === 'rough'){ launchDeg -= 2; spin *= 0.55; }
-  else if (p.lie === 'deep'){ launchDeg -= 4; spin *= 0.35; }
-  else if (p.lie === 'bunker' && S.shotType !== 'splash'){ spin *= 0.6; }
-  else if (p.lie === 'waste'){ spin *= 0.7; }
+  // the short game is played with the wedges in the bag
+  const p = me(), sh = SHOTS[S.shotType], lie = LIES[p.lie], F = fxOf('SW'), f = F.forgive;
+  let launchDeg = sh.launch, spin = sh.spin * F.spin;
+  if (p.lie === 'rough'){ launchDeg -= 2; spin *= 1 - 0.45 * f; }
+  else if (p.lie === 'deep'){ launchDeg -= 4; spin *= Math.max(0.1, 1 - 0.65 * f); }
+  else if (p.lie === 'bunker' && S.shotType !== 'splash'){ spin *= 1 - 0.4 * f; }
+  else if (p.lie === 'waste'){ spin *= 1 - 0.3 * f; }
   if (p.under) launchDeg = Math.min(launchDeg, 8);
-  return { launchDeg, spin, lie };
+  return { launchDeg, spin, lie, F };
 }
 function buildChip(carry, yawErr = 0){
   const { launchDeg, spin } = chipParams();
@@ -499,10 +516,11 @@ function fireFull(mAt){
   const perfect = Math.abs(mAt) <= D.perfect;
   let acc = perfect ? 0 : mAt / D.window;            // + early (slice), - late (hook)
   const over = Math.max(0, M.power - 1);
-  const lie = LIES[p.lie];
-  let err = acc * (1 + over * 5) * CLUBS[S.club].err * lie.err;
+  const F = fxOf(CLUBS[S.club].id), lie = lieFx(LIES[p.lie], F);
+  // accuracy narrows the miss and the scatter; forgiveness eases an over-swing
+  let err = acc * (1 + over * 5 * F.forgive) * CLUBS[S.club].err * lie.err * F.acc;
   const calm = p.lie === 'tee' || p.lie === 'fairway';
-  err += gauss() * 0.05 * lie.err * (calm ? 0.5 : 1);
+  err += gauss() * 0.05 * lie.err * F.acc * (calm ? 0.5 : 1);
   M.label = perfect ? 'PERFECT' : Math.abs(acc) < 0.35 ? 'GOOD' : acc > 0 ? (acc > 0.9 ? 'SLICE' : 'PUSH') : (acc < -0.9 ? 'HOOK' : 'PULL');
   if (over > 0.03 && Math.abs(acc) < 0.35) M.label = 'POWER';
   M.flash = 1.4;
@@ -510,7 +528,7 @@ function fireFull(mAt){
   const st = buildFull(M.power, err);
   const club = CLUBS[S.club];
   const v0 = Math.hypot(st.v.x, st.v.y, st.v.z);       // simulate() consumes the state
-  const shot = simulate(S.h, st, { wind: windVec(S.h), trees: true });
+  const shot = simulate(S.h, st, { wind: windVec(S.h, F.control), trees: true });
   S.follow = { t: 0, dur: 0.75, style: 'full' };
   launchShot(shot, 'full', { club: club.name, power: M.power, tag: M.label, quality: M.quality,
                              kind: clubKind(club.id), speed: v0 });
@@ -538,13 +556,13 @@ function holdRelease(){
   H.on = false;
   $('holdBtn').classList.remove('on');
   if (H.g < 0.4){ me().golfer.pose(0, 'chip'); return; }        // a tap is not a swing
-  const p = me(), sh = SHOTS[S.shotType], lie = LIES[p.lie];
+  const p = me(), sh = SHOTS[S.shotType], F = fxOf('SW'), lie = lieFx(LIES[p.lie], F);
   let carry = H.g;
-  // the lie adds its own uncertainty on top of your timing
+  // the lie adds its own uncertainty on top of your timing; forgiveness shrinks the bad-lie part
   const spread = { fairway: 0.015, fringe: 0.015, tee: 0.015, rough: 0.05, deep: 0.1, bunker: 0.08, waste: 0.06 }[p.lie] ?? 0.04;
-  carry *= 1 + gauss() * spread;
-  if (p.lie === 'deep') carry *= 0.9;
-  const yawErr = gauss() * 0.012 * sh.err * lie.err;
+  carry *= 1 + gauss() * (0.015 + (spread - 0.015) * F.forgive);
+  if (p.lie === 'deep') carry *= 1 - 0.1 * F.forgive;
+  const yawErr = gauss() * 0.012 * sh.err * lie.err * F.acc;
   const diff = H.g - S.chipTarget;
   const tol = Math.max(0.6, S.chipTarget * 0.045);
   const tag = Math.abs(diff) <= tol * 0.5 ? 'PERFECT' : Math.abs(diff) <= tol ? 'GOOD' : diff < 0 ? 'SHORT' : 'LONG';
@@ -552,7 +570,7 @@ function holdRelease(){
   S.down = { t: 0, dur: 0.17, from: s0, style: 'chip', fire: () => {
     const st = buildChip(Math.max(0.5, carry), yawErr);
     const v0 = Math.hypot(st.v.x, st.v.y, st.v.z);
-    const shot = simulate(S.h, st, { wind: windVec(S.h), trees: true });
+    const shot = simulate(S.h, st, { wind: windVec(S.h, F.control), trees: true });
     S.follow = { t: 0, dur: 0.55, style: 'chip', to: 0.6 };
     launchShot(shot, 'chip', { club: sh.name, tag, quality: tag === 'PERFECT' ? 1 : 0.7,
                                kind: S.shotType === 'bump' ? 'iron' : 'wedge', speed: v0 });
@@ -565,10 +583,11 @@ function strokePutt(){
   unlock();
   const pace = S.puttPace;
   const s0 = -Math.min(1, Math.sqrt(pace / 30)) * 1.0;
-  const D = S.D;
+  const D = S.D, F = fxOf('P');
   S.down = { t: 0, dur: 0.26, from: s0, style: 'putt', fire: () => {
-    const yawErr = gauss() * D.puttErr * (Math.PI / 180) * (0.6 + pace / 15);
-    const v = puttSpeed(pace) * (1 + gauss() * 0.012 * D.puttErr);
+    // the putter's accuracy keeps it on line, its forgiveness keeps the pace true
+    const yawErr = gauss() * D.puttErr * F.acc * (Math.PI / 180) * (0.6 + pace / 15);
+    const v = puttSpeed(pace) * (1 + gauss() * 0.012 * D.puttErr * F.forgive);
     const st = rollStart(ballStart(), S.aimYaw + yawErr, v);
     const shot = simulate(S.h, st, {});
     S.follow = { t: 0, dur: 0.5, style: 'putt', to: 0.5 };
@@ -702,7 +721,8 @@ function finishShot(){
   // stats
   if (sh.fromLie === 'tee' && h.par > 3 && p.strokes <= 2){
     p.stats.firN++;
-    if (restLie === 'fairway' && sim.result === 'rest') p.stats.fir++;
+    if (restLie === 'fairway' && sim.result === 'rest'){ p.stats.fir++; p.stats.firBest = Math.max(p.stats.firBest, ++p.stats.firRun); }
+    else p.stats.firRun = 0;
     if (CLUBS[S.club] && CLUBS[S.club].id === 'D' && sim.result === 'rest') p.stats.longest = Math.max(p.stats.longest, Math.round(sim.total));
   }
   if (restLie === 'green' && !p.girDone){
@@ -882,11 +902,42 @@ function recordBest(){
 }
 
 function endRound(){
+  if (S.phase === 'over') return;
   S.phase = 'over';
   S.newBest = recordBest();
+  S.lastRound = scoreRound();
   stopAmbience();
   awardPoints().finally(() => { if (S.phase === 'over' && !$('cardOv').classList.contains('hidden')) showCard(true); });
   showCard(true);
+  if (S.lastRound.unlocked.length) setTimeout(() => announceUnlocks(S.lastRound.unlocked), 900);
+}
+
+// my round, as the unlocks see it. With friends, a win is finishing alone
+// on top; alone, it is matching RULES.soloWinToPar, and the margin is strokes under it.
+function scoreRound(){
+  const mine = S.players[S.meIdx], tp = toPar(mine);
+  const others = S.players.filter(q => q !== mine);
+  let win, margin;
+  if (others.length){ const best = Math.min(...others.map(toPar)); win = tp < best; margin = best - tp; }
+  else { win = tp <= RULES.soloWinToPar; margin = RULES.soloWinToPar - tp; }
+  const r = recordRound({ win, bigWin: win && margin >= RULES.winMargin, toPar: tp, holes: S.pars.length,
+                          birdies: mine.stats.birdies, fairwayRun: mine.stats.firBest, longest: mine.stats.longest });
+  return { ...r, win, margin, toPar: tp, solo: !others.length, birdies: mine.stats.birdies };
+}
+
+function rewardHTML(R){
+  const res = R.solo ? (R.win ? 'Par or better' : 'Over par') : (R.win ? 'Win' : 'Loss');
+  const stars = [1, 2, 3].map(i => `<i class="${i <= R.stars ? 'on' : ''}">★</i>`).join('');
+  const rows = R.gained.map(g => {
+    const s = SET_BY_ID[g.id], a = Math.round(g.before.frac * 100), b = Math.round(g.after.frac * 100);
+    return `<div class="rwrow" style="--ac:${s.color}"><b>${esc(s.name)}</b>
+      <div class="cprog"><i style="width:${a}%"></i><s style="left:${a}%;width:${b - a}%"></s></div>
+      <span>${g.after.done ? 'UNLOCKED' : esc(progressText(g.after))}</span></div>`;
+  }).join('');
+  return `<div class="rwtop"><span class="rwres ${R.win ? 'w' : 'l'}">${res}${!R.solo && R.win && R.margin > 0 ? ` by ${R.margin}` : ''}</span>
+      <div class="rwstars" title="${R.stars} star${R.stars > 1 ? 's' : ''}">${stars}</div>
+      <div class="rwn"><b>${fmtPar(R.toPar)}</b><span>vs par</span></div><div class="rwn"><b>${R.birdies}</b><span>birdies</span></div></div>
+    ${rows ? `<div class="rwh">Club unlocks</div>${rows}` : '<div class="rwh">No new unlock progress this round</div>'}`;
 }
 
 async function awardPoints(){
@@ -1284,8 +1335,12 @@ function refreshHUD(){
   if (S.mode === 'full'){
     const c = CLUBS[S.club];
     $('clubName').textContent = c.name;
-    const eff = Math.round(c.carry * lie.power * (p.under ? 0.72 : 1));
-    $('clubCarry').innerHTML = `Carry <b>${eff}y</b>${lie.power < 1 ? ` <span style="opacity:.6">(${c.carry})</span>` : ''}`;
+    const set = SET_BY_ID[clubs.bag[slotOf(c.id)]];
+    $('clubSet').textContent = set.name;
+    $('clubSet').style.color = set.color;
+    const full = Math.round(clubCarry(S.club));
+    const eff = Math.round(clubReach(S.club, LIES[p.lie]) * (p.under ? 0.72 : 1));
+    $('clubCarry').innerHTML = `Carry <b>${eff}y</b>${eff < full ? ` <span style="opacity:.6">(${full})</span>` : ''}`;
     $('clubStrip').innerHTML = CLUBS.slice(0, PUTTER).map((_, i) => `<i class="${i === S.club ? 'on' : ''}"></i>`).join('');
     const u = S.strike.u, v = S.strike.v;
     $('strikeDot').style.left = (50 + u * 34) + '%';
@@ -1656,8 +1711,13 @@ function showCard(final){
       (S.newBest ? ' · New personal best!' : '');
     if (S.newBest){ sfx.fanfare(); }
     const guest = S.online && !net.isHost;
+    const R = S.lastRound;
+    $('cardReward').innerHTML = R ? rewardHTML(R) : '';
+    $('cardReward').classList.toggle('hidden', !R);
     $('cardBtns').innerHTML = `<button class="btn primary" id="cbAgain" ${guest ? 'disabled' : ''}>${guest ? 'Waiting for the host…' : 'Play again'}</button>` +
+      `<button class="btn ghost" id="cbShop">Club Shop</button>` +
       `<button class="btn ghost" id="cbMenu">${S.online ? 'Leave' : 'Main menu'}</button>`;
+    $('cbShop').onclick = () => { sfx.ui(); openShop(); };
     $('cbAgain').onclick = () => {
       if (guest) return;
       $('cardOv').classList.add('hidden'); timers.length = 0; cleanupPlayers();
@@ -1667,6 +1727,7 @@ function showCard(final){
   } else {
     $('cardTitle').textContent = 'Scorecard';
     $('cardSub').textContent = `${THEMES[S.theme].name} · Hole ${S.holeIdx + 1} of ${n}`;
+    $('cardReward').classList.add('hidden');
     $('cardBtns').innerHTML = '<button class="btn primary" id="cbClose">Close</button>';
     $('cbClose').onclick = () => $('cardOv').classList.add('hidden');
   }
@@ -1837,6 +1898,9 @@ function refreshHUDLight(){
   }
 }
 
+// the shop's key handler goes first so an open shop keeps keys from the game
+initShop({ toast, onChange: () => { paintShopBtn(); if (S.phase === 'address') refreshHUD(); } });
+
 const keys = new Set();
 window.addEventListener('keydown', e => {
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
@@ -1978,6 +2042,7 @@ function paintMenu(){
     b.onclick = () => { settings.diff = b.dataset.v; saveSettings(); sfx.ui(); paintMenu(); };
   }
   $('diffDesc').textContent = DIFFICULTY[settings.diff].desc;
+  paintShopBtn();
   paintPlayers();
   paintToggles();
 }
@@ -2006,6 +2071,10 @@ for (const id of ['tQuality', 'pQuality']) $(id).onclick = () => {
   settings.quality = settings.quality === 'high' ? 'low' : 'high'; saveSettings(); paintToggles(); world.setQuality(settings.quality);
   toast('Graphics', settings.quality === 'high' ? 'High' : 'Performance');
 };
+function paintShopBtn(){
+  $('bShopSub').innerHTML = `<i style="background:${bagColor()}"></i>${esc(bagName())} · ${clubs.unlocked.length} of ${SETS.length} sets`;
+}
+$('bShop').onclick = () => { sfx.ui(); openShop(); };
 $('bTeeOff').onclick = () => { sfx.select(); startRound(); };
 $('bHelp').onclick = () => $('helpOv').classList.remove('hidden');
 $('bBack').onclick = () => { location.href = 'index.html'; };
@@ -2339,8 +2408,8 @@ async function boot(){
   }catch(e){}
   setTimeout(() => $('loading').remove(), 700);
   // pre-warm the speed solver for every club at full power
-  setTimeout(() => { for (const c of CLUBS.slice(0, PUTTER)) cachedSpeed(c.carry, c.launch, c.spin); }, 400);
+  setTimeout(() => { CLUBS.slice(0, PUTTER).forEach((c, i) => cachedSpeed(clubCarry(i), c.launch, c.spin * fxOf(c.id).spin)); }, 400);
 }
 // test hook (used by the automated play-tests)
-window.__tour = { S, world, beginTurn, cam };
+window.__tour = { S, world, beginTurn, cam, endRound };
 boot();
