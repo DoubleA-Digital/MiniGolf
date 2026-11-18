@@ -54,7 +54,7 @@ const newPid = () => Math.random().toString(36).slice(2, 10);
 export const net = {
   online: false, isHost: false, code: null, myPid: newPid(),
   roster: [], started: false,
-  peer: null, conns: [], host: null,
+  peer: null, conns: [], hostConn: null,
   handlers: {},                  // type -> fn(msg)
   onRoster: null, onGone: null,  // lobby repaint, connection lost
 
@@ -145,7 +145,7 @@ export const net = {
       peer.on('error', fail);
       peer.on('open', () => {
         const conn = peer.connect(PREFIX + code, { reliable: true });
-        this.host = conn;
+        this.hostConn = conn;
         conn.on('open', () => {
           this.code = code;
           conn.send({ t: 'hello', pid: this.myPid, name: me.name, avatar: me.avatar, avatarImg: me.avatarImg });
@@ -165,7 +165,7 @@ export const net = {
           this.emit(m);
         });
         // only the live session may end things: a stale conn closing after reset() must not kill a newer room
-        conn.on('close', () => { if (!settled) fail({ type: 'peer-unavailable' }); else if (this.host === conn) this.lost(); });
+        conn.on('close', () => { if (!settled) fail({ type: 'peer-unavailable' }); else if (this.hostConn === conn) this.lost(); });
         conn.on('error', err => { if (!settled) fail(err); });
       });
     });
@@ -194,9 +194,9 @@ export const net = {
           if (now - c.seen > SILENT_MS){ this.guestLeft(c); try{ c.close(); }catch(e){} }
           else { try{ c.send({ t: 'hb' }); }catch(e){} }
         }
-      } else if (this.host){
+      } else if (this.hostConn){
         if (now - this.hostSeen > SILENT_MS){ this.lost(); return; }
-        try{ this.host.send({ t: 'hb' }); }catch(e){}
+        try{ this.hostConn.send({ t: 'hb' }); }catch(e){}
       }
     };
     // background tabs throttle main-thread timers to ~1/min, which starves the heartbeat;
@@ -217,14 +217,14 @@ export const net = {
   // host fans out; a guest sends up to the host, which relays
   broadcast(m){
     if (this.isHost){ for (const c of this.conns){ try{ c.send(m); }catch(e){} } }
-    else if (this.host){ try{ this.host.send(m); }catch(e){} }
+    else if (this.hostConn){ try{ this.hostConn.send(m); }catch(e){} }
   },
   send(m){ m.pid = m.pid || this.myPid; this.broadcast(m); },
 
   reset(){
     this.stopBeat();
     try{ this.peer && this.peer.destroy(); }catch(e){}
-    this.peer = null; this.conns = []; this.host = null;
+    this.peer = null; this.conns = []; this.hostConn = null;
     this.online = false; this.isHost = false; this.code = null; this.started = false; this.roster = [];
   },
   leave(){ this.reset(); }
